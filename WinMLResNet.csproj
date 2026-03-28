@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.22621.52</WindowsSdkPackageVersion>
+    <RootNamespace>WinMLResNet</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <GeneratePriFile>false</GeneratePriFile>
+    <DisableMrtCodeGen>true</DisableMrtCodeGen>
+    <EnableCoreMrtTooling>false</EnableCoreMrtTooling>
+    <WasdkPkgVer>1.8.260317003</WasdkPkgVer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(WasdkPkgVer)" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" Version="1.8.2141" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="System.Numerics.Tensors" Version="10.0.5" />
+  </ItemGroup>
+
+  <!-- Copy native Windows ML / ONNX Runtime DLLs from NuGet package to output -->
+  <ItemGroup>
+    <Content Include="$(NuGetPackageRoot)microsoft.windowsappsdk.ml\1.8.2141\runtimes-framework\win-x64\native\onnxruntime.dll" CopyToOutputDirectory="PreserveNewest" Link="onnxruntime.dll" />
+    <Content Include="$(NuGetPackageRoot)microsoft.windowsappsdk.ml\1.8.2141\runtimes-framework\win-x64\native\onnxruntime_providers_shared.dll" CopyToOutputDirectory="PreserveNewest" Link="onnxruntime_providers_shared.dll" />
+    <Content Include="$(NuGetPackageRoot)microsoft.windowsappsdk.ml\1.8.2141\runtimes-framework\win-x64\native\DirectML.dll" CopyToOutputDirectory="PreserveNewest" Link="DirectML.dll" />
+    <Content Include="$(NuGetPackageRoot)microsoft.windowsappsdk.ml\1.8.2141\runtimes-framework\win-x64\native\Microsoft.Windows.AI.MachineLearning.dll" CopyToOutputDirectory="PreserveNewest" Link="Microsoft.Windows.AI.MachineLearning.dll" />
+  </ItemGroup>
+</Project>

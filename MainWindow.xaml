@@ -80,6 +80,7 @@
                             <!-- Table Header -->
                             <Grid Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -89,14 +90,15 @@
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Execution Provider" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="1" Text="Mode" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="2" Text="Compile" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="3" Text="Preprocess" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="4" Text="Inference" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="5" Text="Total" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="6" Text="Top Prediction" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="7" Text="Confidence" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="0" Text="#" FontWeight="SemiBold" FontSize="12" Width="24" />
+                                <TextBlock Grid.Column="1" Text="Execution Provider" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="2" Text="Mode" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="3" Text="Compile" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="4" Text="Preprocess" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="5" Text="Inference" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="6" Text="Total" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="7" Text="Top Prediction" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="8" Text="Confidence" FontWeight="SemiBold" FontSize="12" />
                             </Grid>
 
                             <!-- Metrics Rows -->
@@ -112,6 +114,7 @@
                                     <DataTemplate>
                                         <Grid ColumnSpacing="8">
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
@@ -121,14 +124,15 @@
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="{Binding EpName}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Mode}" FontSize="12" />
-                                            <TextBlock Grid.Column="2" Text="{Binding CompileTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="3" Text="{Binding PreprocessTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="4" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
-                                            <TextBlock Grid.Column="5" Text="{Binding TotalTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="6" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                            <TextBlock Grid.Column="7" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
+                                            <TextBlock Grid.Column="0" Text="{Binding Rank}" FontSize="12" Opacity="0.5" Width="24" />
+                                            <TextBlock Grid.Column="1" Text="{Binding EpName}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Mode}" FontSize="12" />
+                                            <TextBlock Grid.Column="3" Text="{Binding CompileTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="4" Text="{Binding PreprocessTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="5" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Grid.Column="6" Text="{Binding TotalTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="7" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="8" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>

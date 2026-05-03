@@ -60,6 +60,7 @@ public class EpDeviceInfo
 
 public class ClassificationMetrics
 {
+    public int Rank { get; set; }
     public string EpName { get; set; } = "";
     public string Mode { get; set; } = "Uncompiled";
     public double RawCompileMs { get; set; } = -1;

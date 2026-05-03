@@ -278,11 +278,13 @@ public sealed partial class MainWindow : Window
 
         // Force ListView to re-render with NEW object instances (WinUI reuses containers for same refs)
         // Sorted fastest to slowest by total time; errors go to bottom
+        int rank = 0;
         var src = _metrics
             .OrderBy(m => m.RawTotalMs < 0 ? 1 : 0)
             .ThenBy(m => m.RawTotalMs < 0 ? 0 : m.RawTotalMs)
             .Select(m => new ClassificationMetrics
             {
+                Rank = ++rank,
                 EpName = m.EpName,
                 Mode = m.Mode,
                 RawCompileMs = m.RawCompileMs,

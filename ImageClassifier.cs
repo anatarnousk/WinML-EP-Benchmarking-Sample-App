@@ -63,12 +63,16 @@ public class ClassificationMetrics
     public int Rank { get; set; }
     public string EpName { get; set; } = "";
     public string Mode { get; set; } = "Uncompiled";
+    public double RawSessionMs { get; set; } = -1;
+    public string SessionTime { get; set; } = "";
     public double RawCompileMs { get; set; } = -1;
     public string CompileTime { get; set; } = "—";
     public double RawPreprocessMs { get; set; } = -1;
     public string PreprocessTime { get; set; } = "";
     public double RawInferenceMs { get; set; } = -1;
     public string InferenceTime { get; set; } = "";
+    public double RawEpPerfMs { get; set; } = -1;
+    public string EpPerfTime { get; set; } = "";
     public double RawTotalMs { get; set; } = -1;
     public string TotalTime { get; set; } = "";
     public string TopPrediction { get; set; } = "";
@@ -342,6 +346,7 @@ public class ImageClassifier : IDisposable
         ppSw.Stop();
 
         // Get or create session for this EP (offload to background thread — session creation and compilation are heavy)
+        var sessionSw = Stopwatch.StartNew();
         InferenceSession session;
         double compileMs = 0;
         bool compileCached = false;
@@ -353,6 +358,8 @@ public class ImageClassifier : IDisposable
         {
             session = await Task.Run(() => GetOrCreateSession(epDevice));
         }
+        sessionSw.Stop();
+        double sessionMs = sessionSw.Elapsed.TotalMilliseconds;
 
         var infSw = Stopwatch.StartNew();
         var inputName = session.InputMetadata.First().Key;
@@ -401,6 +408,8 @@ public class ImageClassifier : IDisposable
             {
                 EpName = epDevice.DisplayName,
                 Mode = compiled ? "Compiled" : "Uncompiled",
+                RawSessionMs = sessionMs,
+                SessionTime = $"{sessionMs:F1} ms",
                 RawCompileMs = compiled && !compileCached ? compileMs : -1,
                 CompileTime = compiled
                     ? (compileCached ? "cached" : $"{compileMs:F1} ms")
@@ -409,6 +418,8 @@ public class ImageClassifier : IDisposable
                 PreprocessTime = $"{ppSw.Elapsed.TotalMilliseconds:F1} ms",
                 RawInferenceMs = infSw.Elapsed.TotalMilliseconds,
                 InferenceTime = $"{infSw.Elapsed.TotalMilliseconds:F1} ms",
+                RawEpPerfMs = (compiled && !compileCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds,
+                EpPerfTime = $"{((compiled && !compileCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds):F1} ms",
                 RawTotalMs = totalSw.Elapsed.TotalMilliseconds,
                 TotalTime = $"{totalSw.Elapsed.TotalMilliseconds:F1} ms",
                 TopPrediction = predictions.First().Label,

@@ -16,6 +16,7 @@
     <GeneratePriFile>false</GeneratePriFile>
     <DisableMrtCodeGen>true</DisableMrtCodeGen>
     <EnableCoreMrtTooling>false</EnableCoreMrtTooling>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <WasdkPkgVer>2.0.1</WasdkPkgVer>
   </PropertyGroup>
 

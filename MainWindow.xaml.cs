@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Collections.ObjectModel;
@@ -7,34 +8,57 @@ namespace WinMLResNet;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly ImageClassifier _classifier;
+    private ImageClassifier _classifier;
     private readonly ObservableCollection<PredictionResult> _results = new();
     private readonly ObservableCollection<ClassificationMetrics> _metrics = new();
     private string? _currentImagePath;
     private List<EpDeviceInfo> _devices = new();
+    private string _sortColumn = "EpLatency";
+    private bool _sortAscending = true;
+
+    // Column header labels (without arrows) for reset
+    private static readonly Dictionary<string, string> ColumnLabels = new()
+    {
+        ["EpName"] = "Execution Provider",
+        ["Mode"] = "Mode",
+        ["Preprocess"] = "Image Preprocessing",
+        ["Session"] = "Session Creation",
+        ["Compile"] = "Compile",
+        ["Inference"] = "Inference",
+        ["EpLatency"] = "EP Latency",
+        ["Total"] = "Total",
+        ["TopPrediction"] = "Top Prediction",
+        ["Confidence"] = "Confidence"
+    };
 
     public MainWindow()
     {
         this.InitializeComponent();
+
+        // Set window icon
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+        appWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app-icon.ico"));
+
         ResultsListView.ItemsSource = _results;
         MetricsListView.ItemsSource = _metrics;
 
         var modelPath = Path.Combine(AppContext.BaseDirectory, "Assets", "resnet50-v2-7.onnx");
         _classifier = new ImageClassifier(modelPath);
 
+        UpdateModelNameDisplay(modelPath);
         PopulateModelInfo();
         PopulateRuntimeInfo();
 
         // WASDK 2.0 Pivot doesn't constrain content height properly — fix ScrollViewer on resize
-        this.SizeChanged += (s, e) =>
-        {
-            // WASDK 2.0 Pivot doesn't constrain content height properly — fix ScrollViewer on resize
-            var availableHeight = e.Size.Height - 160;
-            if (availableHeight > 100)
-                ClassificationScrollViewer.MaxHeight = availableHeight;
+        this.SizeChanged += (s, e) => ApplyLayoutConstraints(e.Size.Height);
 
-            // Cap image preview at 32% of window height
-            ImagePreviewGrid.MaxHeight = e.Size.Height * 0.32;
+        // Also apply on first load
+        this.Activated += (s, e) =>
+        {
+            if (e.WindowActivationState != WindowActivationState.Deactivated)
+                ApplyLayoutConstraints(this.Bounds.Height);
         };
 
         StatusText.Text = "Initializing Windows ML...";
@@ -211,6 +235,7 @@ public sealed partial class MainWindow : Window
                     InferenceTime = "Error",
                     TotalTime = ExtractErrorCode(ex)
                 });
+                ApplyInferenceHeatMap();
             }
 
             // Compiled
@@ -231,8 +256,7 @@ public sealed partial class MainWindow : Window
                     CompileTime = "Error",
                     InferenceTime = "—",
                     TotalTime = ExtractErrorCode(ex)
-                });
-            }
+                });                ApplyInferenceHeatMap();            }
         }
 
         StatusText.Text = $"Comparison complete — {_devices.Count} EP(s) x 2 modes benchmarked.";
@@ -244,6 +268,126 @@ public sealed partial class MainWindow : Window
         PickImageButton.IsEnabled = enabled;
         ClassifyButton.IsEnabled = enabled && _currentImagePath != null;
         RunAllButton.IsEnabled = enabled && _currentImagePath != null;
+        ExportButton.IsEnabled = _metrics.Count > 0;
+    }
+
+    private async void OnExportCsv(object sender, RoutedEventArgs e)
+    {
+        if (_metrics.Count == 0) return;
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        picker.FileTypeChoices.Add("CSV", new List<string> { ".csv" });
+        picker.SuggestedFileName = $"EP_Benchmark_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+
+        var lines = new List<string>
+        {
+            "Rank,Execution Provider,Mode,Image Preprocessing (ms),Session Creation (ms),Compile (ms),Inference (ms),EP Latency (ms),Total (ms),Top Prediction,Confidence"
+        };
+
+        foreach (var m in _metrics)
+        {
+            var preprocess = m.RawPreprocessMs >= 0 ? $"{m.RawPreprocessMs:F1}" : "";
+            var session = m.RawSessionMs >= 0 ? $"{m.RawSessionMs:F1}" : "";
+            var compile = m.RawCompileMs >= 0 ? $"{m.RawCompileMs:F1}" : m.CompileTime.Replace("—", "").Trim();
+            var inference = m.RawInferenceMs >= 0 ? $"{m.RawInferenceMs:F1}" : "Error";
+            var epLatency = m.RawEpPerfMs >= 0 ? $"{m.RawEpPerfMs:F1}" : "Error";
+            var total = m.RawTotalMs >= 0 ? $"{m.RawTotalMs:F1}" : "Error";
+            lines.Add($"{m.Rank},\"{m.EpName}\",{m.Mode},{preprocess},{session},{compile},{inference},{epLatency},{total},\"{m.TopPrediction}\",{m.TopConfidence}");
+        }
+
+        await Windows.Storage.FileIO.WriteLinesAsync(file, lines);
+        StatusText.Text = $"Exported {_metrics.Count} rows to {file.Name}";
+    }
+
+    private void OnColumnHeaderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string col) return;
+        if (_metrics.Count == 0) return;
+
+        if (_sortColumn == col)
+            _sortAscending = !_sortAscending;
+        else
+        {
+            _sortColumn = col;
+            _sortAscending = true;
+        }
+
+        UpdateColumnHeaderArrows();
+        ApplyInferenceHeatMap();
+    }
+
+    private void UpdateColumnHeaderArrows()
+    {
+        var arrow = _sortAscending ? " ▲" : " ▼";
+        var headers = new Dictionary<string, TextBlock>
+        {
+            ["EpName"] = Header_EpName,
+            ["Mode"] = Header_Mode,
+            ["Preprocess"] = Header_Preprocess,
+            ["Session"] = Header_Session,
+            ["Compile"] = Header_Compile,
+            ["Inference"] = Header_Inference,
+            ["EpLatency"] = Header_EpLatency,
+            ["Total"] = Header_Total,
+            ["TopPrediction"] = Header_TopPrediction,
+            ["Confidence"] = Header_Confidence
+        };
+        foreach (var (key, tb) in headers)
+            tb.Text = key == _sortColumn ? ColumnLabels[key] + arrow : ColumnLabels[key];
+    }
+
+    private async void OnDownloadModel(object sender, RoutedEventArgs e)
+    {
+        await Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/onnx/models"));
+    }
+
+    private async void OnChangeModel(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(".onnx");
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        // Dispose old classifier and create new one
+        _classifier.Dispose();
+        _classifier = new ImageClassifier(file.Path);
+
+        // Update UI
+        UpdateModelNameDisplay(file.Path);
+        _results.Clear();
+        _metrics.Clear();
+        PopulateModelInfo();
+
+        // Re-initialize
+        StatusText.Text = $"Model changed to {file.Name}. Initializing...";
+        await InitializeClassifierAsync();
+    }
+
+    private void UpdateModelNameDisplay(string modelPath)
+    {
+        var fi = new FileInfo(modelPath);
+        var sizeMb = fi.Length / (1024.0 * 1024.0);
+        var sizeText = sizeMb >= 1024 ? $"{sizeMb / 1024.0:F1} GB" : $"{sizeMb:F1} MB";
+        ModelNameText.Text = $"{fi.Name} ({sizeText})";
+    }
+
+    private void ApplyLayoutConstraints(double windowHeight)
+    {
+        var availableHeight = windowHeight - 160;
+        if (availableHeight > 100)
+            ClassificationScrollViewer.MaxHeight = availableHeight;
+        ImagePreviewGrid.MaxHeight = windowHeight * 0.30;
     }
 
     private static string ExtractErrorCode(Exception ex)
@@ -258,41 +402,56 @@ public sealed partial class MainWindow : Window
 
     private void ApplyInferenceHeatMap()
     {
-        // Apply heat map emoji to compile, preprocess, and total columns
+        // Apply heat map emoji to compile, inference, EP perf, and total columns (not preprocess — it's EP-independent noise)
         ApplyHeatMapToColumn(
             m => m.RawCompileMs,
             (m, text) => m.CompileTime = text,
             m => m.RawCompileMs >= 0);
         ApplyHeatMapToColumn(
-            m => m.RawPreprocessMs,
-            (m, text) => m.PreprocessTime = text,
-            m => m.RawPreprocessMs >= 0);
-        ApplyHeatMapToColumn(
             m => m.RawInferenceMs,
             (m, text) => m.InferenceTime = text,
             m => m.RawInferenceMs >= 0);
         ApplyHeatMapToColumn(
-            m => m.RawTotalMs,
-            (m, text) => m.TotalTime = text,
-            m => m.RawTotalMs >= 0);
+            m => m.RawEpPerfMs,
+            (m, text) => m.EpPerfTime = text,
+            m => m.RawEpPerfMs >= 0);
 
-        // Force ListView to re-render with NEW object instances (WinUI reuses containers for same refs)
-        // Sorted fastest to slowest by total time; errors go to bottom
+        // Sort by selected column; errors always go to bottom
+        Func<ClassificationMetrics, object> sortKey = _sortColumn switch
+        {
+            "EpName" => m => m.EpName,
+            "Mode" => m => m.Mode,
+            "Preprocess" => m => m.RawPreprocessMs < 0 ? (object)double.MaxValue : m.RawPreprocessMs,
+            "Session" => m => m.RawSessionMs < 0 ? (object)double.MaxValue : m.RawSessionMs,
+            "Compile" => m => m.RawCompileMs < 0 ? (object)double.MaxValue : m.RawCompileMs,
+            "Inference" => m => m.RawInferenceMs < 0 ? (object)double.MaxValue : m.RawInferenceMs,
+            "EpLatency" => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs,
+            "Total" => m => m.RawTotalMs < 0 ? (object)double.MaxValue : m.RawTotalMs,
+            "TopPrediction" => m => m.TopPrediction,
+            "Confidence" => m => m.TopConfidence,
+            _ => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs
+        };
+
         int rank = 0;
-        var src = _metrics
-            .OrderBy(m => m.RawTotalMs < 0 ? 1 : 0)
-            .ThenBy(m => m.RawTotalMs < 0 ? 0 : m.RawTotalMs)
+        var sorted = _sortAscending
+            ? _metrics.OrderBy(sortKey)
+            : _metrics.OrderByDescending(sortKey);
+        var src = sorted
             .Select(m => new ClassificationMetrics
             {
                 Rank = ++rank,
                 EpName = m.EpName,
                 Mode = m.Mode,
+                RawSessionMs = m.RawSessionMs,
+                SessionTime = m.SessionTime,
                 RawCompileMs = m.RawCompileMs,
                 CompileTime = m.CompileTime,
                 RawPreprocessMs = m.RawPreprocessMs,
                 PreprocessTime = m.PreprocessTime,
                 RawInferenceMs = m.RawInferenceMs,
                 InferenceTime = m.InferenceTime,
+                RawEpPerfMs = m.RawEpPerfMs,
+                EpPerfTime = m.EpPerfTime,
                 RawTotalMs = m.RawTotalMs,
                 TotalTime = m.TotalTime,
                 TopPrediction = m.TopPrediction,

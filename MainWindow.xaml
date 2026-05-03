@@ -26,6 +26,14 @@
                 <ScrollViewer x:Name="ClassificationScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
                     <StackPanel Spacing="16">
 
+                        <!-- Model Selector -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Selected Model:" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock x:Name="ModelNameText" Text="resnet50-v2-7.onnx" FontSize="13" VerticalAlignment="Center" Opacity="0.8" />
+                            <Button x:Name="DownloadModelButton" Content="Download Model" Click="OnDownloadModel" FontSize="12" Padding="8,4" />
+                            <Button x:Name="ChangeModelButton" Content="Change Model..." Click="OnChangeModel" FontSize="12" Padding="8,4" />
+                        </StackPanel>
+
                         <!-- Controls Row -->
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <Button x:Name="PickImageButton" Content="Pick an Image" Click="OnPickImage" />
@@ -74,8 +82,11 @@
 
                         <!-- EP Performance Comparison -->
                         <StackPanel Spacing="4">
-                            <TextBlock Text="EP Performance Comparison"
-                                       FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+                                <TextBlock Text="EP Performance Comparison"
+                                           FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="ExportButton" Content="Export Results" Click="OnExportCsv" FontSize="12" Padding="8,4" IsEnabled="False" />
+                            </StackPanel>
 
                             <!-- Table Header -->
                             <Grid Padding="12,4" ColumnSpacing="8">
@@ -87,18 +98,42 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="#" FontWeight="SemiBold" FontSize="12" Width="24" />
-                                <TextBlock Grid.Column="1" Text="Execution Provider" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="2" Text="Mode" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="3" Text="Compile" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="4" Text="Preprocess" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="5" Text="Inference" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="6" Text="Total" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="7" Text="Top Prediction" FontWeight="SemiBold" FontSize="12" />
-                                <TextBlock Grid.Column="8" Text="Confidence" FontWeight="SemiBold" FontSize="12" />
+                                <Button Grid.Column="1" Tag="EpName" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_EpName" Text="Execution Provider" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="2" Tag="Mode" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Mode" Text="Mode" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="3" Tag="Preprocess" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Preprocess" Text="Image Preprocessing" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="4" Tag="Session" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Session" Text="Session Creation" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="5" Tag="Compile" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Compile" Text="Compile" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="6" Tag="Inference" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Inference" Text="Inference" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="7" Tag="EpLatency" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_EpLatency" Text="EP Latency ▼" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="8" Tag="Total" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Total" Text="Total" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="9" Tag="TopPrediction" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_TopPrediction" Text="Top Prediction" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="10" Tag="Confidence" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Confidence" Text="Confidence" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
                             </Grid>
 
                             <!-- Metrics Rows -->
@@ -121,18 +156,22 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="{Binding Rank}" FontSize="12" Opacity="0.5" Width="24" />
                                             <TextBlock Grid.Column="1" Text="{Binding EpName}" TextTrimming="CharacterEllipsis" FontSize="12" />
                                             <TextBlock Grid.Column="2" Text="{Binding Mode}" FontSize="12" />
-                                            <TextBlock Grid.Column="3" Text="{Binding CompileTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="4" Text="{Binding PreprocessTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="5" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
-                                            <TextBlock Grid.Column="6" Text="{Binding TotalTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="7" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                            <TextBlock Grid.Column="8" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
+                                            <TextBlock Grid.Column="3" Text="{Binding PreprocessTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="4" Text="{Binding SessionTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="5" Text="{Binding CompileTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="6" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Grid.Column="7" Text="{Binding EpPerfTime}" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Grid.Column="8" Text="{Binding TotalTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="9" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="10" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
@@ -263,6 +302,12 @@
 
                         <StackPanel Spacing="12">
                             <StackPanel Spacing="2">
+                                <TextBlock Text="#" FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                    Text="Row number based on the current sort order. By default, rows are sorted by EP Latency (fastest first). Click any column header to re-sort. Errors are always placed at the bottom." />
+                            </StackPanel>
+
+                            <StackPanel Spacing="2">
                                 <TextBlock Text="Execution Provider" FontWeight="SemiBold" FontSize="14" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
                                     Text="The hardware backend used to run the model. Examples: CPUExecutionProvider (CPU), DmlExecutionProvider (GPU via DirectML), OpenVINOExecutionProvider (Intel NPU/GPU/CPU). Each EP optimizes inference for its target hardware." />
@@ -275,15 +320,21 @@
                             </StackPanel>
 
                             <StackPanel Spacing="2">
-                                <TextBlock Text="Compile" FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock Text="Image Preprocessing" FontWeight="SemiBold" FontSize="14" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Time spent compiling the ONNX model into a hardware-optimized format for the selected EP. This is a one-time cost — once compiled, the optimized model can be cached to disk. Shows '—' for uncompiled runs and 'cached' if the compiled session was already loaded in memory." />
+                                    Text="Time spent preparing the image before it is fed to the model. This includes: loading the image file from disk, decoding it (JPEG/PNG), resizing it to 224x224 pixels, converting pixel data from BGRA to RGB channels, and applying ImageNet normalization. This step runs on the CPU regardless of which EP is selected and is not EP-dependent. Variations across rows are due to OS caching and CPU contention, not EP differences." />
                             </StackPanel>
 
                             <StackPanel Spacing="2">
-                                <TextBlock Text="Preprocess" FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock Text="Session Creation" FontWeight="SemiBold" FontSize="14" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Time spent preparing the image before it is fed to the model. This includes: loading the image file from disk, decoding it (JPEG/PNG), resizing it to 224x224 pixels (the input size ResNet-50 expects), converting pixel data from BGRA to RGB channels, and applying ImageNet normalization (subtracting per-channel means and dividing by standard deviations). This step runs on the CPU regardless of which EP is selected." />
+                                    Text="Time spent creating (or retrieving from cache) the ONNX Runtime InferenceSession for the selected EP. On first use of an EP, this includes loading the model file, initializing the EP runtime, and for AUTO EPs, discovering available hardware. Sessions are cached after creation, so subsequent runs reuse the existing session and this value reflects cache lookup time only (~0ms)." />
+                            </StackPanel>
+
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Compile" FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                    Text="Time spent compiling the ONNX model into a hardware-optimized format for the selected EP. This is a one-time cost — once compiled, the optimized model can be cached to disk. Shows '—' for uncompiled runs and 'cached' if the compiled session was already loaded in memory." />
                             </StackPanel>
 
                             <StackPanel Spacing="2">
@@ -293,9 +344,15 @@
                             </StackPanel>
 
                             <StackPanel Spacing="2">
+                                <TextBlock Text="EP Latency (Compile + Inference)" FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                    Text="The sum of Compile and Inference time — this is the total time the execution provider spends processing the model, excluding app-level overhead like preprocessing and session creation. This is the primary metric for comparing EP performance. The table is sorted by this column." />
+                            </StackPanel>
+
+                            <StackPanel Spacing="2">
                                 <TextBlock Text="Total" FontWeight="SemiBold" FontSize="14" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Wall-clock time from start to finish, including preprocessing, session creation (if first run for that EP), inference, and output processing. Note: Total may be larger than Preprocess + Inference because it includes session lookup/creation overhead and softmax post-processing." />
+                                    Text="Wall-clock time from start to finish, including preprocessing, session creation (if first run for that EP), compilation, inference, and output processing. This represents the full end-to-end latency a user would experience. Note: Total may be significantly higher than EP Latency for the first run of an EP due to session creation overhead." />
                             </StackPanel>
 
                             <StackPanel Spacing="2">
@@ -323,12 +380,24 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="About This App" FontSize="20" FontWeight="SemiBold" />
                             <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                Text="WinML EP Benchmarking Sample App is a sample/demo application built to exercise and benchmark the new Windows ML APIs (Microsoft.Windows.AI.MachineLearning) shipped with Windows App SDK. It classifies images using a ResNet-50 ONNX model and compares execution provider performance across CPU, GPU, and NPU hardware." />
+                                Text="WinML EP Benchmarking Sample App is a sample/demo application built to exercise and benchmark the new Windows ML APIs (Microsoft.Windows.AI.MachineLearning) shipped with Windows App SDK. It ships with a ResNet-50 ONNX model but supports loading any ONNX model for benchmarking." />
                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                 <TextBlock Text="Learn more at" FontSize="13" Opacity="0.85" VerticalAlignment="Center" />
                                 <HyperlinkButton Content="aka.ms/winml" NavigateUri="https://aka.ms/winml"
                                                  FontSize="13" Opacity="0.85" Padding="0" Margin="4,0,0,0" VerticalAlignment="Center" />
                                 <TextBlock Text="." FontSize="13" Opacity="0.85" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Features" FontSize="18" FontWeight="SemiBold" />
+                            <StackPanel Spacing="4" Margin="8,4,0,0">
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Compare All EPs — benchmark every detected execution provider in both compiled and uncompiled modes" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Sortable columns — click any column header to sort ascending/descending" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Emoji heat map — color-coded performance indicators (🟢 fastest → 🔴 slowest) on Compile, Inference, and EP Latency columns" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Export Results — save benchmark data to CSV for analysis in Excel or other tools" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Model switching — load any ONNX model via Change Model, or download from the ONNX Model Zoo" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Runtime diagnostics — view ONNX Runtime, Windows ML, WASDK versions and deployment info" />
                             </StackPanel>
                         </StackPanel>
 

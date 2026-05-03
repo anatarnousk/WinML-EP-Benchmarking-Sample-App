@@ -1,4 +1,4 @@
-# WinML ResNet Image Classifier
+# WinML EP Benchmarking Sample App
 
 A Windows desktop app built with **WinUI 3** and **Windows ML** that classifies images using the **ResNet-50** ONNX model. Pick any image and get the top-5 predictions with confidence scores.
 

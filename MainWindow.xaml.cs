@@ -25,6 +25,18 @@ public sealed partial class MainWindow : Window
         PopulateModelInfo();
         PopulateRuntimeInfo();
 
+        // WASDK 2.0 Pivot doesn't constrain content height properly — fix ScrollViewer on resize
+        this.SizeChanged += (s, e) =>
+        {
+            // WASDK 2.0 Pivot doesn't constrain content height properly — fix ScrollViewer on resize
+            var availableHeight = e.Size.Height - 160;
+            if (availableHeight > 100)
+                ClassificationScrollViewer.MaxHeight = availableHeight;
+
+            // Cap image preview at 32% of window height
+            ImagePreviewGrid.MaxHeight = e.Size.Height * 0.32;
+        };
+
         StatusText.Text = "Initializing Windows ML...";
         _ = InitializeClassifierAsync();
     }
@@ -147,7 +159,7 @@ public sealed partial class MainWindow : Window
                     Mode = "Compiled",
                     CompileTime = "Error",
                     InferenceTime = "—",
-                    TotalTime = compEx.Message
+                    TotalTime = ExtractErrorCode(compEx)
                 });
             }
 
@@ -183,13 +195,12 @@ public sealed partial class MainWindow : Window
             {
                 var result = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: false);
                 _metrics.Add(result.Metrics);
+                ApplyInferenceHeatMap();
 
-                if (i == _devices.Count - 1)
-                {
-                    _results.Clear();
-                    foreach (var p in result.Predictions)
-                        _results.Add(p);
-                }
+                // Update predictions after every EP so they appear immediately
+                _results.Clear();
+                foreach (var p in result.Predictions)
+                    _results.Add(p);
             }
             catch (Exception ex)
             {
@@ -198,7 +209,7 @@ public sealed partial class MainWindow : Window
                     EpName = device.DisplayName,
                     Mode = "Uncompiled",
                     InferenceTime = "Error",
-                    TotalTime = ex.Message
+                    TotalTime = ExtractErrorCode(ex)
                 });
             }
 
@@ -209,6 +220,7 @@ public sealed partial class MainWindow : Window
             {
                 var compiledResult = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: true);
                 _metrics.Add(compiledResult.Metrics);
+                ApplyInferenceHeatMap();
             }
             catch (Exception ex)
             {
@@ -218,7 +230,7 @@ public sealed partial class MainWindow : Window
                     Mode = "Compiled",
                     CompileTime = "Error",
                     InferenceTime = "—",
-                    TotalTime = ex.Message
+                    TotalTime = ExtractErrorCode(ex)
                 });
             }
         }
@@ -232,5 +244,112 @@ public sealed partial class MainWindow : Window
         PickImageButton.IsEnabled = enabled;
         ClassifyButton.IsEnabled = enabled && _currentImagePath != null;
         RunAllButton.IsEnabled = enabled && _currentImagePath != null;
+    }
+
+    private static string ExtractErrorCode(Exception ex)
+    {
+        var msg = ex.Message;
+        var match = System.Text.RegularExpressions.Regex.Match(msg, @"\[ErrorCode:(\w+)\]");
+        if (match.Success)
+            return $"\u274C Error ({match.Groups[1].Value})";
+        var short_ = msg.Length > 30 ? msg[..30] + "…" : msg;
+        return $"\u274C Error ({short_})";
+    }
+
+    private void ApplyInferenceHeatMap()
+    {
+        // Apply heat map emoji to compile, preprocess, and total columns
+        ApplyHeatMapToColumn(
+            m => m.RawCompileMs,
+            (m, text) => m.CompileTime = text,
+            m => m.RawCompileMs >= 0);
+        ApplyHeatMapToColumn(
+            m => m.RawPreprocessMs,
+            (m, text) => m.PreprocessTime = text,
+            m => m.RawPreprocessMs >= 0);
+        ApplyHeatMapToColumn(
+            m => m.RawInferenceMs,
+            (m, text) => m.InferenceTime = text,
+            m => m.RawInferenceMs >= 0);
+        ApplyHeatMapToColumn(
+            m => m.RawTotalMs,
+            (m, text) => m.TotalTime = text,
+            m => m.RawTotalMs >= 0);
+
+        // Force ListView to re-render with NEW object instances (WinUI reuses containers for same refs)
+        // Sorted fastest to slowest by total time; errors go to bottom
+        var src = _metrics
+            .OrderBy(m => m.RawTotalMs < 0 ? 1 : 0)
+            .ThenBy(m => m.RawTotalMs < 0 ? 0 : m.RawTotalMs)
+            .Select(m => new ClassificationMetrics
+            {
+                EpName = m.EpName,
+                Mode = m.Mode,
+                RawCompileMs = m.RawCompileMs,
+                CompileTime = m.CompileTime,
+                RawPreprocessMs = m.RawPreprocessMs,
+                PreprocessTime = m.PreprocessTime,
+                RawInferenceMs = m.RawInferenceMs,
+                InferenceTime = m.InferenceTime,
+                RawTotalMs = m.RawTotalMs,
+                TotalTime = m.TotalTime,
+                TopPrediction = m.TopPrediction,
+                TopConfidence = m.TopConfidence
+            })
+            .ToList();
+        _metrics.Clear();
+        foreach (var item in src)
+            _metrics.Add(item);
+    }
+
+    private static readonly string[] HeatEmojis = [
+        "\U0001F7E2", // green - fastest
+        "\U0001F535", // blue
+        "\U0001F7E1", // yellow
+        "\U0001F7E0", // orange
+        "\U0001F534"  // red - slowest
+    ];
+
+    private void ApplyHeatMapToColumn(
+        Func<ClassificationMetrics, double> getRaw,
+        Action<ClassificationMetrics, string> setText,
+        Func<ClassificationMetrics, bool> isValid)
+    {
+        var measured = _metrics.Where(isValid).ToList();
+        if (measured.Count == 0) return;
+
+        // Sort ascending (fastest first)
+        var ranked = measured.OrderBy(m => getRaw(m)).ToList();
+        int n = ranked.Count;
+
+        // Build emoji assignment: 5 buckets [green, blue, yellow, orange, red]
+        // Distribute n items across 5 emoji slots using round-robin-ish assignment
+        for (int i = 0; i < n; i++)
+        {
+            int emojiIndex;
+            if (n == 1)
+            {
+                emojiIndex = 0; // single item → green
+            }
+            else if (n <= 5)
+            {
+                // n items, n emojis: direct mapping
+                // Spread evenly: index 0→green, last→red, interpolate between
+                emojiIndex = (int)Math.Round(i * 4.0 / (n - 1));
+            }
+            else
+            {
+                // More than 5 items: first=green(0), last=red(4), distribute rest across 1-3
+                if (i == 0)
+                    emojiIndex = 0;
+                else if (i == n - 1)
+                    emojiIndex = 4;
+                else
+                    emojiIndex = 1 + (int)Math.Round((i - 1) * 2.0 / (n - 3));
+            }
+            if (emojiIndex > 4) emojiIndex = 4;
+
+            setText(ranked[i], $"{HeatEmojis[emojiIndex]} {getRaw(ranked[i]):F1} ms");
+        }
     }
 }

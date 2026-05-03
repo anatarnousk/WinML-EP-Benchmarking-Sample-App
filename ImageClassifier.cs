@@ -62,9 +62,13 @@ public class ClassificationMetrics
 {
     public string EpName { get; set; } = "";
     public string Mode { get; set; } = "Uncompiled";
+    public double RawCompileMs { get; set; } = -1;
     public string CompileTime { get; set; } = "—";
+    public double RawPreprocessMs { get; set; } = -1;
     public string PreprocessTime { get; set; } = "";
+    public double RawInferenceMs { get; set; } = -1;
     public string InferenceTime { get; set; } = "";
+    public double RawTotalMs { get; set; } = -1;
     public string TotalTime { get; set; } = "";
     public string TopPrediction { get; set; } = "";
     public string TopConfidence { get; set; } = "";
@@ -206,11 +210,39 @@ public class ImageClassifier : IDisposable
         var wasDllPath = Path.Combine(AppContext.BaseDirectory, "Microsoft.WindowsAppRuntime.dll");
         bool isSelfContained = File.Exists(wasDllPath);
 
+        // Detect WASDK version from the WindowsAppRuntime.dll file version, or fall back to the Foundation assembly
+        string wasdkVersion = "Unknown";
+        var runtimeDll = Path.Combine(AppContext.BaseDirectory, "Microsoft.WindowsAppRuntime.dll");
+        if (File.Exists(runtimeDll))
+        {
+            var fvi = System.Diagnostics.FileVersionInfo.GetVersionInfo(runtimeDll);
+            var pv = fvi.ProductVersion;
+            if (pv != null)
+            {
+                // Product version is like "2.0.1" or "2.0.1+commitHash"
+                wasdkVersion = pv.Contains('+') ? pv[..pv.IndexOf('+')] : pv;
+            }
+        }
+        else
+        {
+            // Fallback: try the Foundation projection assembly
+            try
+            {
+                var foundationType = Type.GetType("Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap, Microsoft.WindowsAppSDK.Foundation");
+                if (foundationType != null)
+                {
+                    var v = foundationType.Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "Unknown";
+                    wasdkVersion = v.Contains('+') ? v[..v.IndexOf('+')] : v;
+                }
+            }
+            catch { }
+        }
+
         return new RuntimeInfo
         {
             OnnxRuntimeVersion = ortVersion,
             WindowsMlVersion = mlClean,
-            WindowsAppSdkVersion = "1.8.6",
+            WindowsAppSdkVersion = wasdkVersion,
             DotNetVersion = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
             OsVersion = $"{Environment.OSVersion.VersionString}",
             Architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(),
@@ -224,7 +256,13 @@ public class ImageClassifier : IDisposable
     {
         try
         {
+            // Check standard location first, then NuGet runtimes/ layout (WASDK 2.0+)
             var ortDllPath = Path.Combine(AppContext.BaseDirectory, "onnxruntime.dll");
+            if (!File.Exists(ortDllPath))
+            {
+                var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+                ortDllPath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native", "onnxruntime.dll");
+            }
             if (File.Exists(ortDllPath))
             {
                 var versionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(ortDllPath);
@@ -302,17 +340,17 @@ public class ImageClassifier : IDisposable
         var inputTensor = await PreprocessImageAsync(imagePath);
         ppSw.Stop();
 
-        // Get or create session for this EP
+        // Get or create session for this EP (offload to background thread — session creation and compilation are heavy)
         InferenceSession session;
         double compileMs = 0;
         bool compileCached = false;
         if (compiled)
         {
-            (session, compileMs, compileCached) = GetOrCreateCompiledSession(epDevice);
+            (session, compileMs, compileCached) = await Task.Run(() => GetOrCreateCompiledSession(epDevice));
         }
         else
         {
-            session = GetOrCreateSession(epDevice);
+            session = await Task.Run(() => GetOrCreateSession(epDevice));
         }
 
         var infSw = Stopwatch.StartNew();
@@ -321,7 +359,8 @@ public class ImageClassifier : IDisposable
         {
             NamedOnnxValue.CreateFromTensor(inputName, inputTensor)
         };
-        using var results = session.Run(inputs);
+        // Run inference on a background thread to avoid blocking the UI
+        using var results = await Task.Run(() => session.Run(inputs));
         infSw.Stop();
         totalSw.Stop();
 
@@ -361,11 +400,15 @@ public class ImageClassifier : IDisposable
             {
                 EpName = epDevice.DisplayName,
                 Mode = compiled ? "Compiled" : "Uncompiled",
+                RawCompileMs = compiled && !compileCached ? compileMs : -1,
                 CompileTime = compiled
                     ? (compileCached ? "cached" : $"{compileMs:F1} ms")
                     : "—",
+                RawPreprocessMs = ppSw.Elapsed.TotalMilliseconds,
                 PreprocessTime = $"{ppSw.Elapsed.TotalMilliseconds:F1} ms",
+                RawInferenceMs = infSw.Elapsed.TotalMilliseconds,
                 InferenceTime = $"{infSw.Elapsed.TotalMilliseconds:F1} ms",
+                RawTotalMs = totalSw.Elapsed.TotalMilliseconds,
                 TotalTime = $"{totalSw.Elapsed.TotalMilliseconds:F1} ms",
                 TopPrediction = predictions.First().Label,
                 TopConfidence = predictions.First().Score

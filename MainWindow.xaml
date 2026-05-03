@@ -5,7 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="WinML ResNet Image Classifier">
+    Title="WinML EP Benchmarking Sample App">
 
     <Grid Padding="24" RowSpacing="12">
         <Grid.RowDefinitions>
@@ -15,7 +15,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <TextBlock Grid.Row="0" Text="ResNet-50 Image Classifier"
+        <TextBlock Grid.Row="0" Text="WinML EP Benchmarking Sample App"
                    FontSize="28" FontWeight="SemiBold" />
 
         <!-- Tabs -->
@@ -23,7 +23,7 @@
 
             <!-- Tab 1: Classification -->
             <PivotItem Header="Classification">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
+                <ScrollViewer x:Name="ClassificationScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
                     <StackPanel Spacing="16">
 
                         <!-- Controls Row -->
@@ -39,7 +39,7 @@
                         </StackPanel>
 
                         <!-- Image Preview + Predictions -->
-                        <Grid ColumnSpacing="24" MinHeight="300">
+                        <Grid x:Name="ImagePreviewGrid" ColumnSpacing="24" MinHeight="150">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
@@ -53,15 +53,10 @@
                             <StackPanel Grid.Column="1" Spacing="8">
                                 <TextBlock Text="Top 5 Predictions"
                                            FontSize="20" FontWeight="SemiBold" />
-                                <ListView x:Name="ResultsListView">
-                                    <ListView.ItemContainerStyle>
-                                        <Style TargetType="ListViewItem">
-                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        </Style>
-                                    </ListView.ItemContainerStyle>
-                                    <ListView.ItemTemplate>
+                                <ItemsControl x:Name="ResultsListView">
+                                    <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid ColumnSpacing="12">
+                                            <Grid ColumnSpacing="12" Padding="0,4">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
@@ -72,8 +67,8 @@
                                                            Foreground="DodgerBlue" />
                                             </Grid>
                                         </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                         </Grid>
 
@@ -83,7 +78,7 @@
                                        FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8" />
 
                             <!-- Table Header -->
-                            <Grid Padding="16,8" ColumnSpacing="8">
+                            <Grid Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
@@ -94,22 +89,23 @@
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Execution Provider" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="1" Text="Mode" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="2" Text="Compile" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="3" Text="Preprocess" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="4" Text="Inference" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="5" Text="Total" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="6" Text="Top Prediction" FontWeight="SemiBold" FontSize="13" />
-                                <TextBlock Grid.Column="7" Text="Confidence" FontWeight="SemiBold" FontSize="13" />
+                                <TextBlock Grid.Column="0" Text="Execution Provider" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="1" Text="Mode" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="2" Text="Compile" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="3" Text="Preprocess" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="4" Text="Inference" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="5" Text="Total" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="6" Text="Top Prediction" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Grid.Column="7" Text="Confidence" FontWeight="SemiBold" FontSize="12" />
                             </Grid>
 
                             <!-- Metrics Rows -->
-                            <ListView x:Name="MetricsListView" SelectionMode="None" MaxHeight="500">
+                            <ListView x:Name="MetricsListView" SelectionMode="None" MaxHeight="600">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Padding" Value="16,4" />
+                                        <Setter Property="Padding" Value="12,2" />
+                                        <Setter Property="MinHeight" Value="28" />
                                     </Style>
                                 </ListView.ItemContainerStyle>
                                 <ListView.ItemTemplate>
@@ -125,14 +121,14 @@
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="{Binding EpName}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Mode}" />
-                                            <TextBlock Grid.Column="2" Text="{Binding CompileTime}" />
-                                            <TextBlock Grid.Column="3" Text="{Binding PreprocessTime}" />
-                                            <TextBlock Grid.Column="4" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" />
-                                            <TextBlock Grid.Column="5" Text="{Binding TotalTime}" />
-                                            <TextBlock Grid.Column="6" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="7" Text="{Binding TopConfidence}" Foreground="DodgerBlue" />
+                                            <TextBlock Grid.Column="0" Text="{Binding EpName}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Mode}" FontSize="12" />
+                                            <TextBlock Grid.Column="2" Text="{Binding CompileTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="3" Text="{Binding PreprocessTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="4" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Grid.Column="5" Text="{Binding TotalTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="6" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="7" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
@@ -323,7 +319,13 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="About This App" FontSize="20" FontWeight="SemiBold" />
                             <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                Text="WinML ResNet Image Classifier is a sample/demo application built to exercise and benchmark the new Windows ML APIs (Microsoft.Windows.AI.MachineLearning) shipped with Windows App SDK. It classifies images using a ResNet-50 ONNX model and compares execution provider performance across CPU, GPU, and NPU hardware." />
+                                Text="WinML EP Benchmarking Sample App is a sample/demo application built to exercise and benchmark the new Windows ML APIs (Microsoft.Windows.AI.MachineLearning) shipped with Windows App SDK. It classifies images using a ResNet-50 ONNX model and compares execution provider performance across CPU, GPU, and NPU hardware." />
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock Text="Learn more at" FontSize="13" Opacity="0.85" VerticalAlignment="Center" />
+                                <HyperlinkButton Content="aka.ms/winml" NavigateUri="https://aka.ms/winml"
+                                                 FontSize="13" Opacity="0.85" Padding="0" Margin="4,0,0,0" VerticalAlignment="Center" />
+                                <TextBlock Text="." FontSize="13" Opacity="0.85" VerticalAlignment="Center" />
+                            </StackPanel>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
@@ -396,7 +398,12 @@
         </Pivot>
 
         <!-- Footer -->
-        <TextBlock Grid.Row="2" Text="Powered by Windows ML &amp; ResNet-50 ONNX"
-                   FontSize="12" Opacity="0.5" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal">
+            <TextBlock Text="Local model inferencing powered by Windows ML &#x2014; learn more at"
+                       FontSize="12" Opacity="0.5" VerticalAlignment="Center" />
+            <HyperlinkButton Content="aka.ms/winml" NavigateUri="https://aka.ms/winml"
+                             FontSize="12" Opacity="0.5" Padding="0" Margin="4,0,0,0" VerticalAlignment="Center" />
+            <TextBlock Text="." FontSize="12" Opacity="0.5" VerticalAlignment="Center" />
+        </StackPanel>
     </Grid>
 </Window>

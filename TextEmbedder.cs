@@ -19,7 +19,7 @@ public class EmbeddingMetrics
 {
     public int Rank { get; set; }
     public string EpName { get; set; } = "";
-    public string Mode { get; set; } = "Uncompiled";
+    public string Mode { get; set; } = "JIT";
     public double RawSessionMs { get; set; } = -1;
     public string SessionTime { get; set; } = "";
     public double RawCompileMs { get; set; } = -1;
@@ -463,17 +463,21 @@ public class TextEmbedder : IDisposable
             Metrics = new EmbeddingMetrics
             {
                 EpName = epDevice.DisplayName,
-                Mode = (compiled ? "Compiled" : "Uncompiled") + (isFirstRun ? " (Cold)" : " (Warm)"),
+                Mode = isFirstRun
+                    ? (compiled ? "AOT (Cold)" : "JIT (Cold)")
+                    : (compiled ? "Warm (AOT-built)" : "Warm (JIT-built)"),
                 RawTokenizeMs = tokSw.Elapsed.TotalMilliseconds,
                 TokenizeTime = $"{tokSw.Elapsed.TotalMilliseconds:F1} ms",
                 RawSessionMs = sessionSw.Elapsed.TotalMilliseconds,
                 SessionTime = $"{sessionSw.Elapsed.TotalMilliseconds:F1} ms",
                 RawCompileMs = compiled && !sessionCached ? compileMs : -1,
-                CompileTime = compiled ? (sessionCached ? "cached" : $"{compileMs:F1} ms") : "—",
+                CompileTime = compiled
+                    ? (sessionCached ? "AOT cached" : $"{compileMs:F1} ms")
+                    : (sessionCached ? "session cached" : "during session creation"),
                 RawInferenceMs = infSw.Elapsed.TotalMilliseconds,
                 InferenceTime = $"{infSw.Elapsed.TotalMilliseconds:F1} ms",
-                RawEpPerfMs = (compiled && !sessionCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds,
-                EpPerfTime = $"{((compiled && !sessionCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds):F1} ms",
+                RawEpPerfMs = sessionSw.Elapsed.TotalMilliseconds + (compiled && !sessionCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds,
+                EpPerfTime = $"{(sessionSw.Elapsed.TotalMilliseconds + (compiled && !sessionCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds):F1} ms",
                 RawTotalMs = totalSw.Elapsed.TotalMilliseconds,
                 TotalTime = $"{totalSw.Elapsed.TotalMilliseconds:F1} ms",
                 RawMemDeltaMb = memDeltaMb,

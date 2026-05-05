@@ -9,7 +9,7 @@ The app ships two end-to-end scenarios that share the same EP-benchmark UX:
 | **Image Classification** | ResNet-50 v2 | Convolutional Neural Network (~25M params) | JPG / PNG / BMP image |
 | **Text Similarity** | sentence-transformers/all-MiniLM-L6-v2 | Distilled BERT transformer (~22M params, 384-dim embeddings) | Free-form text query |
 
-Both tabs let you compare every detected execution provider side-by-side in compiled and uncompiled modes, with sortable columns, an emoji heat map, and CSV export.
+Both tabs let you compare every detected execution provider side-by-side in JIT and AOT compilation modes, with sortable columns, an emoji heat map, and CSV export.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ The **Coffee Shop Knowledge Bank** corpus (`Assets/embeddings_corpus.txt`) is sh
 
 ### Image Classification tab
 - Pick an image, choose an EP, and see the top-5 ImageNet predictions with confidence scores.
-- **Compare All EPs** runs every detected execution provider in both compiled and uncompiled modes.
+- **Compare All EPs** runs every detected execution provider in both JIT (implicit, compile-on-load) and AOT (explicit `OrtModelCompilationOptions.CompileModel()`) modes, cold and warm.
 
 ### Text Similarity tab
 - Type any phrase (e.g. *"matcha latte with soy milk"*).
@@ -58,23 +58,26 @@ The **Coffee Shop Knowledge Bank** corpus (`Assets/embeddings_corpus.txt`) is sh
 |---|---|
 | `#` | Rank in the current sort order |
 | Execution Provider | EP used (CPU, DML, OpenVINO, QNN, …) |
-| Mode | Uncompiled or Compiled |
+| Mode | One of `JIT (Cold)`, `AOT (Cold)`, `Warm (JIT-built)`, `Warm (AOT-built)`. Cold rows do the actual compile/load work; warm rows reuse the cached `InferenceSession`. |
 | Image Preprocessing / Tokenization | Pre-inference data prep (CPU-only) |
-| Session Creation | First-time session init or cache hit |
-| Compile | One-time `OrtModelCompilationOptions` cost |
+| Session Creation | First-time session init or cache hit. On `JIT (Cold)` for vendor EPs, the EP's compile cost is folded into this column. |
+| AOT Compile | Time spent in `OrtModelCompilationOptions.CompileModel()`. Shows `XXX ms` on `AOT (Cold)`, `AOT cached` on `Warm (AOT-built)`, `during session creation` on `JIT (Cold)`, `session cached` on `Warm (JIT-built)`. |
 | Inference | Core EP-dependent metric — **lower is better** |
-| EP Latency | Compile + Inference (default sort) |
-| Total | End-to-end wall-clock time |
+| EP Total | Session Creation + AOT Compile + Inference (default sort). The total time the EP itself spends on the model, excluding app-level overhead. On warm rows this collapses to just Inference. |
+| Total | End-to-end wall-clock time including preprocessing and post-processing |
 | Memory Δ | Working-set memory change (MB) before/after the run — captures both managed and native allocations. An asterisk (`*`) marks the first (cold) run for that EP+Mode, where the model is loaded into memory; subsequent runs reuse the cached session and show near-zero deltas. |
 | Top Prediction / Top Match | Best label or corpus sentence |
 | Confidence / Similarity | Score for the top result |
 
 ### Cold vs warm runs
 
-Each EP+Mode combination is benchmarked twice in a row:
+Each EP is benchmarked in four rows:
 
-- **Cold run** — the `InferenceSession` is created for the first time (includes model load and, for compiled mode, compilation). Reflects first-time-use cost.
-- **Warm run** — the cached session is reused (pure per-call cost). Reflects steady-state inference performance and is the better number for comparing EPs against each other.
+- **`JIT (Cold)`** — first run, no AOT artifact; the EP compiles the graph implicitly inside `new InferenceSession(...)`. Compile cost shows up under Session Creation.
+- **`AOT (Cold)`** — first run, model precompiled via `OrtModelCompilationOptions.CompileModel()` into a `*_ctx.onnx` artifact, which is then loaded into a session. Compile cost shows up under AOT Compile.
+- **`Warm (JIT-built)` / `Warm (AOT-built)`** — the cached `InferenceSession` from the matching cold run is reused; no compilation or session construction. The `-built` suffix identifies which lineage produced the cached session, not work happening at runtime.
+
+Cold rows show the first-time-use cost a real user would pay; warm rows show steady-state inference performance and are the better number for comparing EPs.
 
 **Compare All EPs** clears the session cache before running so every EP gets an honest cold/warm pair.
 

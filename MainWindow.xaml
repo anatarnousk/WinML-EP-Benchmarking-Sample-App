@@ -125,13 +125,13 @@
                                     <TextBlock x:Name="Header_Session" Text="Session Creation" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="5" Tag="Compile" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
-                                    <TextBlock x:Name="Header_Compile" Text="Compile" FontWeight="SemiBold" FontSize="12" />
+                                    <TextBlock x:Name="Header_Compile" Text="AOT Compile" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="6" Tag="Inference" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="Header_Inference" Text="Inference" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="7" Tag="EpLatency" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
-                                    <TextBlock x:Name="Header_EpLatency" Text="EP Latency ▼" FontWeight="SemiBold" FontSize="12" />
+                                    <TextBlock x:Name="Header_EpLatency" Text="EP Total ▼" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="8" Tag="Total" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="Header_Total" Text="Total" FontWeight="SemiBold" FontSize="12" />
@@ -323,13 +323,13 @@
                                     <TextBlock x:Name="EmbHeader_Session" Text="Session Creation" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="5" Tag="Compile" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
-                                    <TextBlock x:Name="EmbHeader_Compile" Text="Compile" FontWeight="SemiBold" FontSize="12" />
+                                    <TextBlock x:Name="EmbHeader_Compile" Text="AOT Compile" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="6" Tag="Inference" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="EmbHeader_Inference" Text="Inference" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="7" Tag="EpLatency" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
-                                    <TextBlock x:Name="EmbHeader_EpLatency" Text="EP Latency ▼" FontWeight="SemiBold" FontSize="12" />
+                                    <TextBlock x:Name="EmbHeader_EpLatency" Text="EP Total ▼" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                                 <Button Grid.Column="8" Tag="Total" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="EmbHeader_Total" Text="Total" FontWeight="SemiBold" FontSize="12" />
@@ -586,25 +586,25 @@
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Compilation Mode" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Each model is benchmarked in two modes per EP: Uncompiled (model loaded as-is) and Compiled (model pre-optimized for that EP via OrtModelCompilationOptions). Compilation adds an upfront cost but typically lowers per-inference latency." />
+                                        Text="Each model is benchmarked along two compilation paths per EP. JIT: model loaded as-is — vendor EPs compile the graph during InferenceSession construction (that cost shows up under Session Creation). AOT: model pre-compiled for that EP via OrtModelCompilationOptions and persisted as a *_ctx.onnx artifact — the upfront cost is paid once, then skipped on every subsequent load. On the CPU EP there is no codegen — AOT just persists ORT's graph optimizations." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Cold vs Warm Runs" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Each EP+Mode combination is run twice in a row: a Cold run (the InferenceSession is being created for the first time — includes model load and, for compiled mode, compilation) and a Warm run (the cached session is reused — pure per-call cost). Cold rows show the first-time-use cost a user would pay; Warm rows show steady-state inference performance, which is the better number for comparing EPs against each other. The Memory Δ column tells the same story: Cold rows show how much memory the model added when loaded; Warm rows show only per-call tensor churn (usually near zero). 'Compare All EPs' clears the session cache before running so every EP gets an honest cold/warm pair." />
+                                        Text="Each EP is benchmarked in four rows: 'JIT (Cold)' and 'AOT (Cold)' do the actual compilation work — JIT during session creation, AOT via OrtModelCompilationOptions — then run inference once. 'Warm (JIT-built)' and 'Warm (AOT-built)' reuse the cached InferenceSession from the matching cold run; no compilation or session construction occurs — just session.Run() against the already-built artifact. The 'JIT-built' / 'AOT-built' suffix on warm rows describes which lineage produced the cached session, not work happening at runtime. Cold rows show first-time-use cost a user would pay; Warm rows show steady-state inference performance, which is the better number for comparing EPs against each other. The Memory Δ column tells the same story: Cold rows show how much memory the model added when loaded; Warm rows show only per-call tensor churn (usually near zero). 'Compare All EPs' clears the session cache before running so every EP gets an honest cold/warm pair." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Heat Map" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Color emojis on Compile, Inference, and EP Latency columns rank rows from fastest (🟢) to slowest (🔴) based on the current results. ❌ marks rows where a run errored out — these are always sorted to the bottom." />
+                                        Text="Color emojis on Inference and EP Total columns rank rows from fastest (🟢) to slowest (🔴) based on the current results. ❌ marks rows where a run errored out — these are always sorted to the bottom." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Sorting" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Click any column header to sort ascending/descending. Default sort is EP Latency, fastest first. The # column always reflects the current sort order." />
+                                        Text="Click any column header to sort ascending/descending. Default sort is EP Total, fastest first. The # column always reflects the current sort order." />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -631,19 +631,19 @@
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Mode" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Uncompiled or Compiled. See Core Concepts above." />
+                                        Text="One of four values: 'JIT (Cold)' — first run, vendor EP compiles inside session creation; 'AOT (Cold)' — first run, model precompiled via OrtModelCompilationOptions; 'Warm (JIT-built)' — cached JIT-built session reused, no compilation; 'Warm (AOT-built)' — cached AOT-built session reused, no compilation. See Compilation Mode and Cold vs Warm in Core Concepts above." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Session Creation" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Time to create or fetch the cached InferenceSession for the EP. First-time creation includes loading the model and initializing the EP runtime; subsequent calls hit the in-memory cache (~0 ms)." />
+                                        Text="Time to create or fetch the cached InferenceSession for the EP. First-time creation includes loading the model and initializing the EP runtime; warm rows hit the in-memory cache (~0 ms). Important: on 'JIT (Cold)' rows for vendor (NPU/GPU) EPs, the EP also compiles the graph inside this call — that cost lives here, not in the AOT Compile column." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
-                                    <TextBlock Text="Compile" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock Text="AOT Compile" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Time to compile the ONNX model into an EP-optimized format. Shows '—' for uncompiled rows and 'cached' if the compiled session was already loaded." />
+                                        Text="Time spent in OrtModelCompilationOptions.CompileModel() (ahead-of-time compile) producing an EP-optimized artifact. Possible values: 'XXX ms' on 'AOT (Cold)' rows where the compile actually ran; 'AOT cached' on 'Warm (AOT-built)' rows where the AOT artifact and session are reused; 'during session creation' on 'JIT (Cold)' rows for vendor (NPU/GPU) EPs — compilation still happens, just folded into Session Creation rather than measured here; 'session cached' on 'Warm (JIT-built)' rows where the cached session is reused but no AOT compile ever ran." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
@@ -653,21 +653,21 @@
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
-                                    <TextBlock Text="EP Latency" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock Text="EP Total" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Compile + Inference. The total time the EP itself spends on the model, excluding app-level overhead. The primary metric for ranking EPs and the default sort column." />
+                                        Text="Sum of Session Creation + AOT Compile + Inference. The total time the EP itself spends on the model, excluding app-level overhead like image preprocessing or tokenization. The primary metric for ranking EPs and the default sort column. On warm rows Session Creation ≈ 0 and AOT Compile is excluded, so this collapses to just Inference — i.e., steady-state EP performance. On 'JIT (Cold)' rows for vendor EPs the vendor compile cost is captured here via Session Creation, even though the AOT Compile column reads 'during session creation'. Distinct from the 'Total' column, which is end-to-end including preprocessing and post-processing." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Total" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="End-to-end wall-clock time including preprocessing, session creation, compile, inference, and post-processing. Reflects the full user-perceived latency." />
+                                        Text="End-to-end wall-clock time including preprocessing, session creation, AOT compile, inference, and post-processing. Reflects the full user-perceived latency." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Memory Δ" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Change in the app's working-set memory (in MB) before and after the run. Captures both managed and native allocations — including ONNX Runtime model weights, EP buffers, and intermediate tensors. An asterisk (*) marks rows that are the first run for that EP+Mode — the model is being loaded into memory for the first time, so a large positive delta is expected. Subsequent runs of the same EP+Mode reuse the cached session and typically show near-zero deltas. Compiled rows generally use more memory than uncompiled rows on GPU/NPU EPs because the EP-specific compiled blob (precompiled kernels, fused ops, hardware-native binaries) is materialized in addition to the original graph." />
+                                        Text="Change in the app's working-set memory (in MB) before and after the run. Captures both managed and native allocations — including ONNX Runtime model weights, EP buffers, and intermediate tensors. An asterisk (*) marks rows that are the first run for that EP+Mode — the model is being loaded into memory for the first time, so a large positive delta is expected. Warm rows reuse the cached session and typically show near-zero deltas. AOT rows generally use more memory than JIT rows on GPU/NPU EPs because the EP-specific compiled blob (precompiled kernels, fused ops, hardware-native binaries) is materialized in addition to the original graph." />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -759,11 +759,11 @@
                             <TextBlock Text="Features" FontSize="18" FontWeight="SemiBold" />
                             <StackPanel Spacing="4" Margin="8,4,0,0">
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Two scenarios — Image Classification (CNN) and Text Similarity / semantic search (transformer)" />
-                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Compare All EPs — benchmark every detected execution provider in both compiled and uncompiled modes" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="• Compare All EPs — benchmark every detected execution provider in both AOT and JIT modes" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Sortable columns — click any column header to sort ascending/descending" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Cold vs warm runs — every EP+Mode is benchmarked twice to separate first-time-use cost from steady-state inference" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Memory tracking — per-run working-set delta captures model load and per-call tensor churn" />
-                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Emoji heat map — color-coded performance indicators (🟢 fastest → 🔴 slowest) on Compile, Inference, and EP Latency columns" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="• Emoji heat map — color-coded performance indicators (🟢 fastest → 🔴 slowest) on Inference and EP Total columns" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Auto-download — the embedding model fetches automatically the first time you visit the Text Similarity tab" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Export Results — save benchmark data to CSV for analysis in Excel or other tools" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Model switching — load any ONNX model via Change Model, or download from the ONNX Model Zoo / HuggingFace" />

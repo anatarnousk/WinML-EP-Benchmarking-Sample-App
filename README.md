@@ -65,8 +65,18 @@ The **Coffee Shop Knowledge Bank** corpus (`Assets/embeddings_corpus.txt`) is sh
 | Inference | Core EP-dependent metric — **lower is better** |
 | EP Latency | Compile + Inference (default sort) |
 | Total | End-to-end wall-clock time |
+| Memory Δ | Working-set memory change (MB) before/after the run — captures both managed and native allocations. An asterisk (`*`) marks the first (cold) run for that EP+Mode, where the model is loaded into memory; subsequent runs reuse the cached session and show near-zero deltas. |
 | Top Prediction / Top Match | Best label or corpus sentence |
 | Confidence / Similarity | Score for the top result |
+
+### Cold vs warm runs
+
+Each EP+Mode combination is benchmarked twice in a row:
+
+- **Cold run** — the `InferenceSession` is created for the first time (includes model load and, for compiled mode, compilation). Reflects first-time-use cost.
+- **Warm run** — the cached session is reused (pure per-call cost). Reflects steady-state inference performance and is the better number for comparing EPs against each other.
+
+**Compare All EPs** clears the session cache before running so every EP gets an honest cold/warm pair.
 
 The Glossary tab inside the app explains everything in detail.
 

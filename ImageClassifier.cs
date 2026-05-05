@@ -75,6 +75,8 @@ public class ClassificationMetrics
     public string EpPerfTime { get; set; } = "";
     public double RawTotalMs { get; set; } = -1;
     public string TotalTime { get; set; } = "";
+    public double RawMemDeltaMb { get; set; } = double.NaN;
+    public string MemoryDelta { get; set; } = "";
     public string TopPrediction { get; set; } = "";
     public string TopConfidence { get; set; } = "";
 }
@@ -286,11 +288,11 @@ public class ImageClassifier : IDisposable
         return "Unknown";
     }
 
-    private InferenceSession GetOrCreateSession(EpDeviceInfo epDevice)
+    private (InferenceSession session, bool wasCached) GetOrCreateSession(EpDeviceInfo epDevice)
     {
         var key = $"{epDevice.DisplayName}|uncompiled";
         if (_sessions.TryGetValue(key, out var cached))
-            return cached;
+            return (cached, true);
 
         var ortEnv = OrtEnv.Instance();
         var sessionOptions = new SessionOptions();
@@ -298,7 +300,7 @@ public class ImageClassifier : IDisposable
 
         var session = new InferenceSession(_modelPath, sessionOptions);
         _sessions[key] = session;
-        return session;
+        return (session, false);
     }
 
     private (InferenceSession session, double compileMs, bool wasCached) GetOrCreateCompiledSession(EpDeviceInfo epDevice)
@@ -338,6 +340,11 @@ public class ImageClassifier : IDisposable
     {
         await InitializeAsync();
 
+        // Capture working-set baseline before any work for this run.
+        var process = Process.GetCurrentProcess();
+        process.Refresh();
+        long memBefore = process.WorkingSet64;
+
         var totalSw = Stopwatch.StartNew();
 
         // Preprocess image
@@ -349,17 +356,18 @@ public class ImageClassifier : IDisposable
         var sessionSw = Stopwatch.StartNew();
         InferenceSession session;
         double compileMs = 0;
-        bool compileCached = false;
+        bool sessionCached = false;
         if (compiled)
         {
-            (session, compileMs, compileCached) = await Task.Run(() => GetOrCreateCompiledSession(epDevice));
+            (session, compileMs, sessionCached) = await Task.Run(() => GetOrCreateCompiledSession(epDevice));
         }
         else
         {
-            session = await Task.Run(() => GetOrCreateSession(epDevice));
+            (session, sessionCached) = await Task.Run(() => GetOrCreateSession(epDevice));
         }
         sessionSw.Stop();
         double sessionMs = sessionSw.Elapsed.TotalMilliseconds;
+        bool isFirstRun = !sessionCached;
 
         var infSw = Stopwatch.StartNew();
         var inputName = session.InputMetadata.First().Key;
@@ -371,6 +379,11 @@ public class ImageClassifier : IDisposable
         using var results = await Task.Run(() => session.Run(inputs));
         infSw.Stop();
         totalSw.Stop();
+
+        // Capture working-set after inference completes (before output processing — that's negligible)
+        process.Refresh();
+        long memAfter = process.WorkingSet64;
+        double memDeltaMb = (memAfter - memBefore) / (1024.0 * 1024.0);
 
         // Process output
         var outputName = session.OutputMetadata.First().Key;
@@ -407,25 +420,36 @@ public class ImageClassifier : IDisposable
             Metrics = new ClassificationMetrics
             {
                 EpName = epDevice.DisplayName,
-                Mode = compiled ? "Compiled" : "Uncompiled",
+                Mode = (compiled ? "Compiled" : "Uncompiled") + (isFirstRun ? " (Cold)" : " (Warm)"),
                 RawSessionMs = sessionMs,
                 SessionTime = $"{sessionMs:F1} ms",
-                RawCompileMs = compiled && !compileCached ? compileMs : -1,
+                RawCompileMs = compiled && !sessionCached ? compileMs : -1,
                 CompileTime = compiled
-                    ? (compileCached ? "cached" : $"{compileMs:F1} ms")
+                    ? (sessionCached ? "cached" : $"{compileMs:F1} ms")
                     : "—",
                 RawPreprocessMs = ppSw.Elapsed.TotalMilliseconds,
                 PreprocessTime = $"{ppSw.Elapsed.TotalMilliseconds:F1} ms",
                 RawInferenceMs = infSw.Elapsed.TotalMilliseconds,
                 InferenceTime = $"{infSw.Elapsed.TotalMilliseconds:F1} ms",
-                RawEpPerfMs = (compiled && !compileCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds,
-                EpPerfTime = $"{((compiled && !compileCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds):F1} ms",
+                RawEpPerfMs = (compiled && !sessionCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds,
+                EpPerfTime = $"{((compiled && !sessionCached ? compileMs : 0) + infSw.Elapsed.TotalMilliseconds):F1} ms",
                 RawTotalMs = totalSw.Elapsed.TotalMilliseconds,
                 TotalTime = $"{totalSw.Elapsed.TotalMilliseconds:F1} ms",
+                RawMemDeltaMb = memDeltaMb,
+                MemoryDelta = FormatMemDelta(memDeltaMb, isFirstRun),
                 TopPrediction = predictions.First().Label,
                 TopConfidence = predictions.First().Score
             }
         };
+    }
+
+    internal static string FormatMemDelta(double mb, bool isFirstRun = false)
+    {
+        if (double.IsNaN(mb)) return "";
+        // Show negative deltas (e.g., GC freed memory) too
+        var prefix = mb >= 0 ? "+" : "";
+        var marker = isFirstRun ? " *" : "";
+        return $"{prefix}{mb:F1} MB{marker}";
     }
 
     private static async Task<DenseTensor<float>> PreprocessImageAsync(string imagePath)
@@ -473,5 +497,19 @@ public class ImageClassifier : IDisposable
         foreach (var session in _sessions.Values)
             session.Dispose();
         _sessions.Clear();
+    }
+
+    /// <summary>
+    /// Disposes all cached InferenceSessions so the next ClassifyAsync call for any EP+Mode
+    /// will be a true 'cold' run (model loaded into memory fresh).
+    /// </summary>
+    public void ClearSessionCache()
+    {
+        foreach (var session in _sessions.Values)
+            session.Dispose();
+        _sessions.Clear();
+        // Encourage the GC to reclaim native handles before the next run begins.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
     }
 }

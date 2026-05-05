@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
         ["Inference"] = "Inference",
         ["EpLatency"] = "EP Latency",
         ["Total"] = "Total",
+        ["Memory"] = "Memory Δ",
         ["TopPrediction"] = "Top Prediction",
         ["Confidence"] = "Confidence"
     };
@@ -50,6 +51,7 @@ public sealed partial class MainWindow : Window
         ["Inference"] = "Inference",
         ["EpLatency"] = "EP Latency",
         ["Total"] = "Total",
+        ["Memory"] = "Memory Δ",
         ["TopMatch"] = "Top Match",
         ["Similarity"] = "Similarity"
     };
@@ -211,40 +213,52 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            // Run uncompiled
-            var result = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: false);
+            // Remove any existing rows for this EP so we get a clean cold/warm pair (cold requires a fresh session).
+            // Note: removing from _metrics doesn't evict the cached InferenceSession, so we can't truly force a "cold"
+            // run again without restarting the app. The first time the user picks an EP, that run is cold; subsequent
+            // single-EP clicks of the same EP will all show as warm. Compare All EPs (which clears caches at start)
+            // gives the proper cold/warm pair.
+            var existing = _metrics.Where(m => m.EpName == device.DisplayName).ToList();
+            foreach (var item in existing) _metrics.Remove(item);
 
-            _results.Clear();
-            foreach (var p in result.Predictions)
-                _results.Add(p);
-
-            // Update metrics — replace existing entries for this EP
-            var existingUncompiled = _metrics.FirstOrDefault(m => m.EpName == device.DisplayName && m.Mode == "Uncompiled");
-            if (existingUncompiled != null) _metrics.Remove(existingUncompiled);
-            _metrics.Add(result.Metrics);
-
-            // Run compiled
-            StatusText.Text = $"Compiling & classifying with {device.DisplayName}...";
-            try
+            // Run uncompiled twice (cold + warm). If the session is already cached, both rows will be Warm.
+            for (int pass = 0; pass < 2; pass++)
             {
-                var compiledResult = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: true);
-                var existingCompiled = _metrics.FirstOrDefault(m => m.EpName == device.DisplayName && m.Mode == "Compiled");
-                if (existingCompiled != null) _metrics.Remove(existingCompiled);
-                _metrics.Add(compiledResult.Metrics);
-            }
-            catch (Exception compEx)
-            {
-                _metrics.Add(new ClassificationMetrics
+                StatusText.Text = $"Classifying with {device.DisplayName} (uncompiled, {(pass == 0 ? "cold" : "warm")})...";
+                var result = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: false);
+                _metrics.Add(result.Metrics);
+                if (pass == 0)
                 {
-                    EpName = device.DisplayName,
-                    Mode = "Compiled",
-                    CompileTime = "Error",
-                    InferenceTime = "—",
-                    TotalTime = ExtractErrorCode(compEx)
-                });
+                    _results.Clear();
+                    foreach (var p in result.Predictions) _results.Add(p);
+                }
             }
 
-            StatusText.Text = $"Done — {device.DisplayName}: {result.Metrics.InferenceTime} inference";
+            // Run compiled twice (cold + warm)
+            for (int pass = 0; pass < 2; pass++)
+            {
+                StatusText.Text = $"Compiling & classifying with {device.DisplayName} ({(pass == 0 ? "cold" : "warm")})...";
+                try
+                {
+                    var compiledResult = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: true);
+                    _metrics.Add(compiledResult.Metrics);
+                }
+                catch (Exception compEx)
+                {
+                    _metrics.Add(new ClassificationMetrics
+                    {
+                        EpName = device.DisplayName,
+                        Mode = $"Compiled ({(pass == 0 ? "Cold" : "Warm")})",
+                        CompileTime = "Error",
+                        InferenceTime = "—",
+                        TotalTime = ExtractErrorCode(compEx)
+                    });
+                    break; // if cold compile failed, warm will too
+                }
+            }
+
+            ApplyInferenceHeatMap();
+            StatusText.Text = $"Done — {device.DisplayName} benchmarked (4 runs).";
         }
         catch (Exception ex)
         {
@@ -262,61 +276,74 @@ public sealed partial class MainWindow : Window
 
         SetButtonsEnabled(false);
         _metrics.Clear();
-        int total = _devices.Count * 2; // uncompiled + compiled per EP
+        // Clear session cache so every EP starts with a true cold run.
+        _classifier.ClearSessionCache();
+        // 4 runs per EP: uncompiled cold, uncompiled warm, compiled cold, compiled warm
+        int total = _devices.Count * 4;
         int step = 0;
 
         for (int i = 0; i < _devices.Count; i++)
         {
             var device = _devices[i];
 
-            // Uncompiled
-            step++;
-            StatusText.Text = $"[{step}/{total}] {device.DisplayName} (uncompiled)...";
-            try
+            // Uncompiled — cold + warm (back-to-back so 'Warm' actually hits the cache)
+            for (int pass = 0; pass < 2; pass++)
             {
-                var result = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: false);
-                _metrics.Add(result.Metrics);
-                ApplyInferenceHeatMap();
-
-                // Update predictions after every EP so they appear immediately
-                _results.Clear();
-                foreach (var p in result.Predictions)
-                    _results.Add(p);
-            }
-            catch (Exception ex)
-            {
-                _metrics.Add(new ClassificationMetrics
+                step++;
+                var passLabel = pass == 0 ? "cold" : "warm";
+                StatusText.Text = $"[{step}/{total}] {device.DisplayName} (uncompiled, {passLabel})...";
+                try
                 {
-                    EpName = device.DisplayName,
-                    Mode = "Uncompiled",
-                    InferenceTime = "Error",
-                    TotalTime = ExtractErrorCode(ex)
-                });
-                ApplyInferenceHeatMap();
+                    var result = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: false);
+                    _metrics.Add(result.Metrics);
+                    ApplyInferenceHeatMap();
+
+                    // Update predictions after every EP so they appear immediately
+                    _results.Clear();
+                    foreach (var p in result.Predictions)
+                        _results.Add(p);
+                }
+                catch (Exception ex)
+                {
+                    _metrics.Add(new ClassificationMetrics
+                    {
+                        EpName = device.DisplayName,
+                        Mode = $"Uncompiled ({(pass == 0 ? "Cold" : "Warm")})",
+                        InferenceTime = "Error",
+                        TotalTime = ExtractErrorCode(ex)
+                    });
+                    ApplyInferenceHeatMap();
+                }
             }
 
-            // Compiled
-            step++;
-            StatusText.Text = $"[{step}/{total}] {device.DisplayName} (compiled)...";
-            try
+            // Compiled — cold + warm
+            for (int pass = 0; pass < 2; pass++)
             {
-                var compiledResult = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: true);
-                _metrics.Add(compiledResult.Metrics);
-                ApplyInferenceHeatMap();
-            }
-            catch (Exception ex)
-            {
-                _metrics.Add(new ClassificationMetrics
+                step++;
+                var passLabel = pass == 0 ? "cold" : "warm";
+                StatusText.Text = $"[{step}/{total}] {device.DisplayName} (compiled, {passLabel})...";
+                try
                 {
-                    EpName = device.DisplayName,
-                    Mode = "Compiled",
-                    CompileTime = "Error",
-                    InferenceTime = "—",
-                    TotalTime = ExtractErrorCode(ex)
-                });                ApplyInferenceHeatMap();            }
+                    var compiledResult = await _classifier.ClassifyAsync(_currentImagePath, device, compiled: true);
+                    _metrics.Add(compiledResult.Metrics);
+                    ApplyInferenceHeatMap();
+                }
+                catch (Exception ex)
+                {
+                    _metrics.Add(new ClassificationMetrics
+                    {
+                        EpName = device.DisplayName,
+                        Mode = $"Compiled ({(pass == 0 ? "Cold" : "Warm")})",
+                        CompileTime = "Error",
+                        InferenceTime = "—",
+                        TotalTime = ExtractErrorCode(ex)
+                    });
+                    ApplyInferenceHeatMap();
+                }
+            }
         }
 
-        StatusText.Text = $"Comparison complete — {_devices.Count} EP(s) x 2 modes benchmarked.";
+        StatusText.Text = $"Comparison complete — {_devices.Count} EP(s) x 4 runs benchmarked.";
         SetButtonsEnabled(true);
     }
 
@@ -345,7 +372,7 @@ public sealed partial class MainWindow : Window
 
         var lines = new List<string>
         {
-            "Rank,Execution Provider,Mode,Image Preprocessing (ms),Session Creation (ms),Compile (ms),Inference (ms),EP Latency (ms),Total (ms),Top Prediction,Confidence"
+            "Rank,Execution Provider,Mode,Image Preprocessing (ms),Session Creation (ms),Compile (ms),Inference (ms),EP Latency (ms),Total (ms),Memory Delta (MB),Top Prediction,Confidence"
         };
 
         foreach (var m in _metrics)
@@ -356,7 +383,8 @@ public sealed partial class MainWindow : Window
             var inference = m.RawInferenceMs >= 0 ? $"{m.RawInferenceMs:F1}" : "Error";
             var epLatency = m.RawEpPerfMs >= 0 ? $"{m.RawEpPerfMs:F1}" : "Error";
             var total = m.RawTotalMs >= 0 ? $"{m.RawTotalMs:F1}" : "Error";
-            lines.Add($"{m.Rank},\"{m.EpName}\",{m.Mode},{preprocess},{session},{compile},{inference},{epLatency},{total},\"{m.TopPrediction}\",{m.TopConfidence}");
+            var memory = double.IsNaN(m.RawMemDeltaMb) ? "" : $"{m.RawMemDeltaMb:F1}";
+            lines.Add($"{m.Rank},\"{m.EpName}\",{m.Mode},{preprocess},{session},{compile},{inference},{epLatency},{total},{memory},\"{m.TopPrediction}\",{m.TopConfidence}");
         }
 
         await Windows.Storage.FileIO.WriteLinesAsync(file, lines);
@@ -393,6 +421,7 @@ public sealed partial class MainWindow : Window
             ["Inference"] = Header_Inference,
             ["EpLatency"] = Header_EpLatency,
             ["Total"] = Header_Total,
+            ["Memory"] = Header_Memory,
             ["TopPrediction"] = Header_TopPrediction,
             ["Confidence"] = Header_Confidence
         };
@@ -484,6 +513,7 @@ public sealed partial class MainWindow : Window
             "Inference" => m => m.RawInferenceMs < 0 ? (object)double.MaxValue : m.RawInferenceMs,
             "EpLatency" => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs,
             "Total" => m => m.RawTotalMs < 0 ? (object)double.MaxValue : m.RawTotalMs,
+            "Memory" => m => double.IsNaN(m.RawMemDeltaMb) ? (object)double.MaxValue : m.RawMemDeltaMb,
             "TopPrediction" => m => m.TopPrediction,
             "Confidence" => m => m.TopConfidence,
             _ => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs
@@ -511,6 +541,8 @@ public sealed partial class MainWindow : Window
                 EpPerfTime = m.EpPerfTime,
                 RawTotalMs = m.RawTotalMs,
                 TotalTime = m.TotalTime,
+                RawMemDeltaMb = m.RawMemDeltaMb,
+                MemoryDelta = m.MemoryDelta,
                 TopPrediction = m.TopPrediction,
                 TopConfidence = m.TopConfidence
             })
@@ -770,38 +802,48 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            // Uncompiled
-            var result = await _embedder.SearchAsync(query, device, compiled: false);
-            _embMatches.Clear();
-            foreach (var m in result.Matches) _embMatches.Add(m);
+            // Remove existing rows for this EP so cold/warm shows fresh.
+            var existing = _embMetrics.Where(m => m.EpName == device.DisplayName).ToList();
+            foreach (var item in existing) _embMetrics.Remove(item);
 
-            var existing = _embMetrics.FirstOrDefault(m => m.EpName == device.DisplayName && m.Mode == "Uncompiled");
-            if (existing != null) _embMetrics.Remove(existing);
-            _embMetrics.Add(result.Metrics);
-
-            // Compiled
-            EmbStatusText.Text = $"Compiling & searching with {device.DisplayName}...";
-            try
+            // Uncompiled cold + warm
+            for (int pass = 0; pass < 2; pass++)
             {
-                var compiled = await _embedder.SearchAsync(query, device, compiled: true);
-                var existingC = _embMetrics.FirstOrDefault(m => m.EpName == device.DisplayName && m.Mode == "Compiled");
-                if (existingC != null) _embMetrics.Remove(existingC);
-                _embMetrics.Add(compiled.Metrics);
-            }
-            catch (Exception cex)
-            {
-                _embMetrics.Add(new EmbeddingMetrics
+                EmbStatusText.Text = $"Searching with {device.DisplayName} (uncompiled, {(pass == 0 ? "cold" : "warm")})...";
+                var result = await _embedder.SearchAsync(query, device, compiled: false);
+                _embMetrics.Add(result.Metrics);
+                if (pass == 0)
                 {
-                    EpName = device.DisplayName,
-                    Mode = "Compiled",
-                    CompileTime = "Error",
-                    InferenceTime = "—",
-                    TotalTime = ExtractErrorCode(cex)
-                });
+                    _embMatches.Clear();
+                    foreach (var m in result.Matches) _embMatches.Add(m);
+                }
+            }
+
+            // Compiled cold + warm
+            for (int pass = 0; pass < 2; pass++)
+            {
+                EmbStatusText.Text = $"Compiling & searching with {device.DisplayName} ({(pass == 0 ? "cold" : "warm")})...";
+                try
+                {
+                    var compiled = await _embedder.SearchAsync(query, device, compiled: true);
+                    _embMetrics.Add(compiled.Metrics);
+                }
+                catch (Exception cex)
+                {
+                    _embMetrics.Add(new EmbeddingMetrics
+                    {
+                        EpName = device.DisplayName,
+                        Mode = $"Compiled ({(pass == 0 ? "Cold" : "Warm")})",
+                        CompileTime = "Error",
+                        InferenceTime = "—",
+                        TotalTime = ExtractErrorCode(cex)
+                    });
+                    break;
+                }
             }
 
             ApplyEmbHeatMap();
-            EmbStatusText.Text = $"Done — {device.DisplayName}: {result.Metrics.InferenceTime} inference";
+            EmbStatusText.Text = $"Done — {device.DisplayName} benchmarked (4 runs).";
         }
         catch (Exception ex)
         {
@@ -825,59 +867,72 @@ public sealed partial class MainWindow : Window
 
         SetEmbButtonsEnabled(false);
         _embMetrics.Clear();
-        int total = _embDevices.Count * 2;
+        // Clear session cache so every EP starts with a true cold run.
+        _embedder.ClearSessionCache();
+        // 4 runs per EP: uncompiled cold, uncompiled warm, compiled cold, compiled warm
+        int total = _embDevices.Count * 4;
         int step = 0;
 
         for (int i = 0; i < _embDevices.Count; i++)
         {
             var device = _embDevices[i];
 
-            step++;
-            EmbStatusText.Text = $"[{step}/{total}] {device.DisplayName} (uncompiled)...";
-            try
+            // Uncompiled — cold + warm
+            for (int pass = 0; pass < 2; pass++)
             {
-                var result = await _embedder.SearchAsync(query, device, compiled: false);
-                _embMetrics.Add(result.Metrics);
-                ApplyEmbHeatMap();
-
-                _embMatches.Clear();
-                foreach (var m in result.Matches) _embMatches.Add(m);
-            }
-            catch (Exception ex)
-            {
-                _embMetrics.Add(new EmbeddingMetrics
+                step++;
+                var passLabel = pass == 0 ? "cold" : "warm";
+                EmbStatusText.Text = $"[{step}/{total}] {device.DisplayName} (uncompiled, {passLabel})...";
+                try
                 {
-                    EpName = device.DisplayName,
-                    Mode = "Uncompiled",
-                    InferenceTime = "Error",
-                    TotalTime = ExtractErrorCode(ex)
-                });
-                ApplyEmbHeatMap();
+                    var result = await _embedder.SearchAsync(query, device, compiled: false);
+                    _embMetrics.Add(result.Metrics);
+                    ApplyEmbHeatMap();
+
+                    _embMatches.Clear();
+                    foreach (var m in result.Matches) _embMatches.Add(m);
+                }
+                catch (Exception ex)
+                {
+                    _embMetrics.Add(new EmbeddingMetrics
+                    {
+                        EpName = device.DisplayName,
+                        Mode = $"Uncompiled ({(pass == 0 ? "Cold" : "Warm")})",
+                        InferenceTime = "Error",
+                        TotalTime = ExtractErrorCode(ex)
+                    });
+                    ApplyEmbHeatMap();
+                }
             }
 
-            step++;
-            EmbStatusText.Text = $"[{step}/{total}] {device.DisplayName} (compiled)...";
-            try
+            // Compiled — cold + warm
+            for (int pass = 0; pass < 2; pass++)
             {
-                var compiled = await _embedder.SearchAsync(query, device, compiled: true);
-                _embMetrics.Add(compiled.Metrics);
-                ApplyEmbHeatMap();
-            }
-            catch (Exception ex)
-            {
-                _embMetrics.Add(new EmbeddingMetrics
+                step++;
+                var passLabel = pass == 0 ? "cold" : "warm";
+                EmbStatusText.Text = $"[{step}/{total}] {device.DisplayName} (compiled, {passLabel})...";
+                try
                 {
-                    EpName = device.DisplayName,
-                    Mode = "Compiled",
-                    CompileTime = "Error",
-                    InferenceTime = "—",
-                    TotalTime = ExtractErrorCode(ex)
-                });
-                ApplyEmbHeatMap();
+                    var compiled = await _embedder.SearchAsync(query, device, compiled: true);
+                    _embMetrics.Add(compiled.Metrics);
+                    ApplyEmbHeatMap();
+                }
+                catch (Exception ex)
+                {
+                    _embMetrics.Add(new EmbeddingMetrics
+                    {
+                        EpName = device.DisplayName,
+                        Mode = $"Compiled ({(pass == 0 ? "Cold" : "Warm")})",
+                        CompileTime = "Error",
+                        InferenceTime = "—",
+                        TotalTime = ExtractErrorCode(ex)
+                    });
+                    ApplyEmbHeatMap();
+                }
             }
         }
 
-        EmbStatusText.Text = $"Comparison complete — {_embDevices.Count} EP(s) x 2 modes benchmarked.";
+        EmbStatusText.Text = $"Comparison complete — {_embDevices.Count} EP(s) x 4 runs benchmarked.";
         SetEmbButtonsEnabled(true);
     }
 
@@ -933,7 +988,7 @@ public sealed partial class MainWindow : Window
 
         var lines = new List<string>
         {
-            "Rank,Execution Provider,Mode,Tokenization (ms),Session Creation (ms),Compile (ms),Inference (ms),EP Latency (ms),Total (ms),Top Match,Similarity"
+            "Rank,Execution Provider,Mode,Tokenization (ms),Session Creation (ms),Compile (ms),Inference (ms),EP Latency (ms),Total (ms),Memory Delta (MB),Top Match,Similarity"
         };
         foreach (var m in _embMetrics)
         {
@@ -943,7 +998,8 @@ public sealed partial class MainWindow : Window
             var inf = m.RawInferenceMs >= 0 ? $"{m.RawInferenceMs:F1}" : "Error";
             var ep = m.RawEpPerfMs >= 0 ? $"{m.RawEpPerfMs:F1}" : "Error";
             var tot = m.RawTotalMs >= 0 ? $"{m.RawTotalMs:F1}" : "Error";
-            lines.Add($"{m.Rank},\"{m.EpName}\",{m.Mode},{tok},{sess},{comp},{inf},{ep},{tot},\"{m.TopMatch}\",{m.TopSimilarity}");
+            var memory = double.IsNaN(m.RawMemDeltaMb) ? "" : $"{m.RawMemDeltaMb:F1}";
+            lines.Add($"{m.Rank},\"{m.EpName}\",{m.Mode},{tok},{sess},{comp},{inf},{ep},{tot},{memory},\"{m.TopMatch}\",{m.TopSimilarity}");
         }
         await Windows.Storage.FileIO.WriteLinesAsync(file, lines);
         EmbStatusText.Text = $"Exported {_embMetrics.Count} rows to {file.Name}";
@@ -979,6 +1035,7 @@ public sealed partial class MainWindow : Window
             ["Inference"] = EmbHeader_Inference,
             ["EpLatency"] = EmbHeader_EpLatency,
             ["Total"] = EmbHeader_Total,
+            ["Memory"] = EmbHeader_Memory,
             ["TopMatch"] = EmbHeader_TopMatch,
             ["Similarity"] = EmbHeader_Similarity
         };
@@ -1002,6 +1059,7 @@ public sealed partial class MainWindow : Window
             "Inference" => m => m.RawInferenceMs < 0 ? (object)double.MaxValue : m.RawInferenceMs,
             "EpLatency" => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs,
             "Total" => m => m.RawTotalMs < 0 ? (object)double.MaxValue : m.RawTotalMs,
+            "Memory" => m => double.IsNaN(m.RawMemDeltaMb) ? (object)double.MaxValue : m.RawMemDeltaMb,
             "TopMatch" => m => m.TopMatch,
             "Similarity" => m => m.TopSimilarity,
             _ => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs
@@ -1026,6 +1084,8 @@ public sealed partial class MainWindow : Window
             EpPerfTime = m.EpPerfTime,
             RawTotalMs = m.RawTotalMs,
             TotalTime = m.TotalTime,
+            RawMemDeltaMb = m.RawMemDeltaMb,
+            MemoryDelta = m.MemoryDelta,
             TopMatch = m.TopMatch,
             TopSimilarity = m.TopSimilarity
         }).ToList();

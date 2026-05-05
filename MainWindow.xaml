@@ -107,6 +107,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
@@ -135,10 +136,13 @@
                                 <Button Grid.Column="8" Tag="Total" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="Header_Total" Text="Total" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
-                                <Button Grid.Column="9" Tag="TopPrediction" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                <Button Grid.Column="9" Tag="Memory" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="Header_Memory" Text="Memory Δ" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="10" Tag="TopPrediction" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="Header_TopPrediction" Text="Top Prediction" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
-                                <Button Grid.Column="10" Tag="Confidence" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                <Button Grid.Column="11" Tag="Confidence" Click="OnColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="Header_Confidence" Text="Confidence" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                             </Grid>
@@ -165,6 +169,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
@@ -177,12 +182,16 @@
                                             <TextBlock Grid.Column="6" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
                                             <TextBlock Grid.Column="7" Text="{Binding EpPerfTime}" FontWeight="SemiBold" FontSize="12" />
                                             <TextBlock Grid.Column="8" Text="{Binding TotalTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="9" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                            <TextBlock Grid.Column="10" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
+                                            <TextBlock Grid.Column="9" Text="{Binding MemoryDelta}" FontSize="12" />
+                                            <TextBlock Grid.Column="10" Text="{Binding TopPrediction}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="11" Text="{Binding TopConfidence}" Foreground="DodgerBlue" FontSize="12" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
+
+                            <TextBlock FontSize="11" Opacity="0.6" Margin="4,4,0,0"
+                                Text="* Memory Δ marked with an asterisk is the first run for that EP+Mode (when the model is loaded into memory) — large positive deltas are expected. Subsequent runs reuse the cached session." />
                         </StackPanel>
 
                     </StackPanel>
@@ -296,6 +305,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
@@ -324,10 +334,13 @@
                                 <Button Grid.Column="8" Tag="Total" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="EmbHeader_Total" Text="Total" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
-                                <Button Grid.Column="9" Tag="TopMatch" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                <Button Grid.Column="9" Tag="Memory" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Memory" Text="Memory Δ" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="10" Tag="TopMatch" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="EmbHeader_TopMatch" Text="Top Match" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
-                                <Button Grid.Column="10" Tag="Similarity" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                <Button Grid.Column="11" Tag="Similarity" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
                                     <TextBlock x:Name="EmbHeader_Similarity" Text="Similarity" FontWeight="SemiBold" FontSize="12" />
                                 </Button>
                             </Grid>
@@ -354,6 +367,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
@@ -366,12 +380,16 @@
                                             <TextBlock Grid.Column="6" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
                                             <TextBlock Grid.Column="7" Text="{Binding EpPerfTime}" FontWeight="SemiBold" FontSize="12" />
                                             <TextBlock Grid.Column="8" Text="{Binding TotalTime}" FontSize="12" />
-                                            <TextBlock Grid.Column="9" Text="{Binding TopMatch}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                            <TextBlock Grid.Column="10" Text="{Binding TopSimilarity}" Foreground="DodgerBlue" FontSize="12" />
+                                            <TextBlock Grid.Column="9" Text="{Binding MemoryDelta}" FontSize="12" />
+                                            <TextBlock Grid.Column="10" Text="{Binding TopMatch}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="11" Text="{Binding TopSimilarity}" Foreground="DodgerBlue" FontSize="12" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
+
+                            <TextBlock FontSize="11" Opacity="0.6" Margin="4,4,0,0"
+                                Text="* Memory Δ marked with an asterisk is the first run for that EP+Mode (when the model is loaded into memory) — large positive deltas are expected. Subsequent runs reuse the cached session." />
                         </StackPanel>
 
                     </StackPanel>
@@ -568,7 +586,13 @@
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="Compilation Mode" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                        Text="Each model is benchmarked twice per EP: Uncompiled (model loaded as-is) and Compiled (model pre-optimized for that EP via OrtModelCompilationOptions). Compilation adds an upfront cost but typically lowers per-inference latency." />
+                                        Text="Each model is benchmarked in two modes per EP: Uncompiled (model loaded as-is) and Compiled (model pre-optimized for that EP via OrtModelCompilationOptions). Compilation adds an upfront cost but typically lowers per-inference latency." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Cold vs Warm Runs" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Each EP+Mode combination is run twice in a row: a Cold run (the InferenceSession is being created for the first time — includes model load and, for compiled mode, compilation) and a Warm run (the cached session is reused — pure per-call cost). Cold rows show the first-time-use cost a user would pay; Warm rows show steady-state inference performance, which is the better number for comparing EPs against each other. The Memory Δ column tells the same story: Cold rows show how much memory the model added when loaded; Warm rows show only per-call tensor churn (usually near zero). 'Compare All EPs' clears the session cache before running so every EP gets an honest cold/warm pair." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">
@@ -638,6 +662,12 @@
                                     <TextBlock Text="Total" FontWeight="SemiBold" FontSize="14" />
                                     <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
                                         Text="End-to-end wall-clock time including preprocessing, session creation, compile, inference, and post-processing. Reflects the full user-perceived latency." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Memory Δ" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Change in the app's working-set memory (in MB) before and after the run. Captures both managed and native allocations — including ONNX Runtime model weights, EP buffers, and intermediate tensors. An asterisk (*) marks rows that are the first run for that EP+Mode — the model is being loaded into memory for the first time, so a large positive delta is expected. Subsequent runs of the same EP+Mode reuse the cached session and typically show near-zero deltas. Compiled rows generally use more memory than uncompiled rows on GPU/NPU EPs because the EP-specific compiled blob (precompiled kernels, fused ops, hardware-native binaries) is materialized in addition to the original graph." />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -731,6 +761,8 @@
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Two scenarios — Image Classification (CNN) and Text Similarity / semantic search (transformer)" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Compare All EPs — benchmark every detected execution provider in both compiled and uncompiled modes" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Sortable columns — click any column header to sort ascending/descending" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Cold vs warm runs — every EP+Mode is benchmarked twice to separate first-time-use cost from steady-state inference" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Memory tracking — per-run working-set delta captures model load and per-call tensor churn" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Emoji heat map — color-coded performance indicators (🟢 fastest → 🔴 slowest) on Compile, Inference, and EP Latency columns" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Auto-download — the embedding model fetches automatically the first time you visit the Text Similarity tab" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Export Results — save benchmark data to CSV for analysis in Excel or other tools" />

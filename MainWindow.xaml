@@ -19,12 +19,19 @@
                    FontSize="28" FontWeight="SemiBold" />
 
         <!-- Tabs -->
-        <Pivot Grid.Row="1">
+        <Pivot Grid.Row="1" x:Name="MainPivot" SelectionChanged="OnMainPivotSelectionChanged">
 
             <!-- Tab 1: Classification -->
-            <PivotItem Header="Classification">
+            <PivotItem Header="Image Classification">
                 <ScrollViewer x:Name="ClassificationScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
                     <StackPanel Spacing="16">
+
+                        <!-- Tab Description -->
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Description" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                Text="Classify an image into one of 1,000 ImageNet categories using ResNet-50 v2, a convolutional neural network. Pick an image and an EP to see the top-5 predictions, or click 'Compare All EPs' to benchmark every execution provider side-by-side." />
+                        </StackPanel>
 
                         <!-- Model Selector -->
                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -182,7 +189,196 @@
                 </ScrollViewer>
             </PivotItem>
 
-            <!-- Tab 2: Model & Runtime Info -->
+            <!-- Tab 2: Text Similarity (Embeddings) -->
+            <PivotItem Header="Text Similarity">
+                <ScrollViewer x:Name="EmbeddingsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
+                    <StackPanel Spacing="16">
+
+                        <!-- Tab Description -->
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Description" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                Text="Find the closest match for a query in a coffee-shop knowledge bank using all-MiniLM-L6-v2, a transformer-based text embedding model. The model converts your text into a 384-dim vector and ranks corpus entries by cosine similarity — the technique behind semantic search and RAG." />
+                        </StackPanel>
+
+                        <!-- Model Selector -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Selected Model:" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock x:Name="EmbModelNameText" Text="all-MiniLM-L6-v2.onnx (not downloaded)" FontSize="13" VerticalAlignment="Center" Opacity="0.8" />
+                            <Button x:Name="EmbDownloadModelButton" Content="Download Model" Click="OnEmbDownloadModel" FontSize="12" Padding="8,4" />
+                            <Button x:Name="EmbChangeModelButton" Content="Change Model..." Click="OnEmbChangeModel" FontSize="12" Padding="8,4" />
+                        </StackPanel>
+
+                        <!-- Query input + Controls -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Query" FontWeight="SemiBold" FontSize="13" />
+                            <TextBox x:Name="QueryTextBox" PlaceholderText="Type a customer request, e.g. 'I'd like a hot oat milk latte with no sugar'"
+                                     FontSize="14" />
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <ComboBox x:Name="EmbEpSelector" Width="320"
+                                          PlaceholderText="Select Execution Provider"
+                                          DisplayMemberPath="DisplayName" />
+                                <Button x:Name="EmbSearchButton" Content="Search" Click="OnEmbSearch" IsEnabled="False" />
+                                <Button x:Name="EmbRunAllButton" Content="Compare All EPs" Click="OnEmbRunAll" IsEnabled="False" />
+                                <TextBlock x:Name="EmbStatusText" VerticalAlignment="Center" FontSize="12" Opacity="0.6" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Top-5 matches + Corpus side panel -->
+                        <Grid ColumnSpacing="24" MinHeight="200">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Top-5 Matches -->
+                            <StackPanel Grid.Column="0" Spacing="8">
+                                <TextBlock Text="Top 5 Matches" FontSize="20" FontWeight="SemiBold" />
+                                <TextBlock Text="The 5 utterances from the coffee-shop knowledge bank that are most similar in meaning to your query."
+                                           FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                                <ItemsControl x:Name="EmbMatchesListView">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="12" Padding="0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Rank}" FontWeight="SemiBold" Width="20" Opacity="0.6" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Score}" Foreground="DodgerBlue" FontWeight="SemiBold" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Built-in Corpus -->
+                            <StackPanel Grid.Column="1" Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <TextBlock Text="Coffee Shop Knowledge Bank" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Button x:Name="EmbDownloadCorpusButton" Content="Download Corpus" Click="OnEmbDownloadCorpus" FontSize="12" Padding="8,4" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="Sample customer utterances a coffee-shop ordering bot might recognize. The query is matched against these via cosine similarity of their embeddings."
+                                           FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8" MaxHeight="180">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl x:Name="EmbCorpusListView">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" FontSize="11" Opacity="0.75" TextWrapping="Wrap" Margin="0,2" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- EP Performance Comparison -->
+                        <StackPanel Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+                                <TextBlock Text="EP Performance Comparison"
+                                           FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="EmbExportButton" Content="Export Results" Click="OnEmbExportCsv" FontSize="12" Padding="8,4" IsEnabled="False" />
+                            </StackPanel>
+
+                            <!-- Table Header -->
+                            <Grid Padding="12,4" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="#" FontWeight="SemiBold" FontSize="12" Width="24" />
+                                <Button Grid.Column="1" Tag="EpName" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_EpName" Text="Execution Provider" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="2" Tag="Mode" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Mode" Text="Mode" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="3" Tag="Tokenize" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Tokenize" Text="Tokenization" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="4" Tag="Session" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Session" Text="Session Creation" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="5" Tag="Compile" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Compile" Text="Compile" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="6" Tag="Inference" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Inference" Text="Inference" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="7" Tag="EpLatency" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_EpLatency" Text="EP Latency ▼" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="8" Tag="Total" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Total" Text="Total" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="9" Tag="TopMatch" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_TopMatch" Text="Top Match" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="10" Tag="Similarity" Click="OnEmbColumnHeaderClick" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left">
+                                    <TextBlock x:Name="EmbHeader_Similarity" Text="Similarity" FontWeight="SemiBold" FontSize="12" />
+                                </Button>
+                            </Grid>
+
+                            <!-- Metrics Rows -->
+                            <ListView x:Name="EmbMetricsListView" SelectionMode="None" MaxHeight="600">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="12,2" />
+                                        <Setter Property="MinHeight" Value="28" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Rank}" FontSize="12" Opacity="0.5" Width="24" />
+                                            <TextBlock Grid.Column="1" Text="{Binding EpName}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Mode}" FontSize="12" />
+                                            <TextBlock Grid.Column="3" Text="{Binding TokenizeTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="4" Text="{Binding SessionTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="5" Text="{Binding CompileTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="6" Text="{Binding InferenceTime}" Foreground="DodgerBlue" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Grid.Column="7" Text="{Binding EpPerfTime}" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Grid.Column="8" Text="{Binding TotalTime}" FontSize="12" />
+                                            <TextBlock Grid.Column="9" Text="{Binding TopMatch}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                            <TextBlock Grid.Column="10" Text="{Binding TopSimilarity}" Foreground="DodgerBlue" FontSize="12" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </PivotItem>
+
+            <!-- Tab 3: Model & Runtime Info -->
             <PivotItem Header="Model &amp; Runtime Info">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
                     <Grid ColumnSpacing="24" RowSpacing="16">
@@ -191,55 +387,108 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Model Stats -->
-                        <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="1"
-                                CornerRadius="8" Padding="16">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="ONNX Model Info" FontSize="18" FontWeight="SemiBold" />
-                                <Grid ColumnSpacing="12" RowSpacing="4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="File:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ModelFileName" FontSize="13" />
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Size:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ModelFileSize" FontSize="13" />
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Producer:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ModelProducer" FontSize="13" />
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Version:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="ModelVersion" FontSize="13" />
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Quantized:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="ModelQuantized" FontSize="13" />
-                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Domain:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="5" Grid.Column="1" x:Name="ModelDomain" FontSize="13" />
-                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Description:" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Grid.Row="6" Grid.Column="1" x:Name="ModelDescription" FontSize="13" TextWrapping="Wrap" />
-                                </Grid>
+                        <!-- Left column: stacked model info cards -->
+                        <StackPanel Grid.Column="0" Spacing="16">
 
-                                <TextBlock Text="Inputs / Outputs" FontWeight="SemiBold" FontSize="14" Margin="0,8,0,0" />
-                                <ListView x:Name="TensorListView" SelectionMode="None" MaxHeight="160">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Display}" FontSize="12" FontFamily="Consolas" />
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </StackPanel>
-                        </Border>
+                            <!-- Image Classification Model -->
+                            <Border BorderBrush="Gray" BorderThickness="1"
+                                    CornerRadius="8" Padding="16">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Image Classification Model" FontSize="18" FontWeight="SemiBold" />
+                                    <Grid ColumnSpacing="12" RowSpacing="4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="File:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ModelFileName" FontSize="13" />
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Size:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ModelFileSize" FontSize="13" />
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Producer:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ModelProducer" FontSize="13" />
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Version:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="ModelVersion" FontSize="13" />
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Quantized:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="ModelQuantized" FontSize="13" />
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Domain:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="5" Grid.Column="1" x:Name="ModelDomain" FontSize="13" />
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Description:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="6" Grid.Column="1" x:Name="ModelDescription" FontSize="13" TextWrapping="Wrap" />
+                                    </Grid>
+
+                                    <TextBlock Text="Inputs / Outputs" FontWeight="SemiBold" FontSize="14" Margin="0,8,0,0" />
+                                    <ListView x:Name="TensorListView" SelectionMode="None" MaxHeight="160">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Display}" FontSize="12" FontFamily="Consolas" />
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Text Embedding Model -->
+                            <Border BorderBrush="Gray" BorderThickness="1"
+                                    CornerRadius="8" Padding="16">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Text Embedding Model" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="EmbModelInfoStatus" FontSize="12" Opacity="0.6" TextWrapping="Wrap"
+                                               Text="Visit the Text Similarity tab to download the embedding model." />
+                                    <Grid x:Name="EmbModelInfoGrid" ColumnSpacing="12" RowSpacing="4" Visibility="Collapsed">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="File:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="EmbModelFileName" FontSize="13" />
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Size:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="EmbModelFileSize" FontSize="13" />
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Producer:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="EmbModelProducer" FontSize="13" />
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Version:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="EmbModelVersion" FontSize="13" />
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Quantized:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="EmbModelQuantized" FontSize="13" />
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Domain:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="5" Grid.Column="1" x:Name="EmbModelDomain" FontSize="13" />
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Description:" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Grid.Row="6" Grid.Column="1" x:Name="EmbModelDescription" FontSize="13" TextWrapping="Wrap" />
+                                    </Grid>
+
+                                    <TextBlock x:Name="EmbModelTensorHeader" Text="Inputs / Outputs" FontWeight="SemiBold" FontSize="14" Margin="0,8,0,0" Visibility="Collapsed" />
+                                    <ListView x:Name="EmbTensorListView" SelectionMode="None" MaxHeight="160" Visibility="Collapsed">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Display}" FontSize="12" FontFamily="Consolas" />
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
 
                         <!-- Runtime Versions -->
                         <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="1"
-                                CornerRadius="8" Padding="16">
+                                CornerRadius="8" Padding="16" VerticalAlignment="Top">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="Runtime Info" FontSize="18" FontWeight="SemiBold" />
                                 <Grid ColumnSpacing="12" RowSpacing="4">
@@ -296,77 +545,164 @@
             <!-- Tab 3: Glossary -->
             <PivotItem Header="Glossary">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,0,0">
-                    <StackPanel Spacing="16" MaxWidth="800">
+                    <StackPanel Spacing="20" MaxWidth="900">
 
-                        <TextBlock Text="Benchmarking Columns" FontSize="20" FontWeight="SemiBold" />
-
-                        <StackPanel Spacing="12">
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="#" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Row number based on the current sort order. By default, rows are sorted by EP Latency (fastest first). Click any column header to re-sort. Errors are always placed at the bottom." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Execution Provider" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="The hardware backend used to run the model. Examples: CPUExecutionProvider (CPU), DmlExecutionProvider (GPU via DirectML), OpenVINOExecutionProvider (Intel NPU/GPU/CPU). Each EP optimizes inference for its target hardware." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Mode" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Whether the model was run as-is (Uncompiled) or pre-compiled for the target EP (Compiled). Compiled mode uses OrtModelCompilationOptions to produce a hardware-optimized version of the ONNX model before inference, which can improve runtime performance at the cost of an upfront compilation step." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Image Preprocessing" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Time spent preparing the image before it is fed to the model. This includes: loading the image file from disk, decoding it (JPEG/PNG), resizing it to 224x224 pixels, converting pixel data from BGRA to RGB channels, and applying ImageNet normalization. This step runs on the CPU regardless of which EP is selected and is not EP-dependent. Variations across rows are due to OS caching and CPU contention, not EP differences." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Session Creation" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Time spent creating (or retrieving from cache) the ONNX Runtime InferenceSession for the selected EP. On first use of an EP, this includes loading the model file, initializing the EP runtime, and for AUTO EPs, discovering available hardware. Sessions are cached after creation, so subsequent runs reuse the existing session and this value reflects cache lookup time only (~0ms)." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Compile" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Time spent compiling the ONNX model into a hardware-optimized format for the selected EP. This is a one-time cost — once compiled, the optimized model can be cached to disk. Shows '—' for uncompiled runs and 'cached' if the compiled session was already loaded in memory." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Inference" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Time spent running the ONNX model on the preprocessed input tensor. This is the core ML computation — the model evaluates all its layers/operators to produce output probabilities. This is the metric most affected by your choice of EP and hardware. Lower is better." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="EP Latency (Compile + Inference)" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="The sum of Compile and Inference time — this is the total time the execution provider spends processing the model, excluding app-level overhead like preprocessing and session creation. This is the primary metric for comparing EP performance. The table is sorted by this column." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Total" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="Wall-clock time from start to finish, including preprocessing, session creation (if first run for that EP), compilation, inference, and output processing. This represents the full end-to-end latency a user would experience. Note: Total may be significantly higher than EP Latency for the first run of an EP due to session creation overhead." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Top Prediction" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="The ImageNet class label with the highest confidence score after softmax. ResNet-50 classifies images into 1,000 categories (e.g., 'golden retriever', 'sports car'). All EPs should produce the same top prediction for a given image — if they differ, it may indicate a precision issue." />
-                            </StackPanel>
-
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Confidence" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                    Text="The softmax probability of the top prediction, expressed as a percentage. Higher means the model is more certain. Values near 100% indicate strong confidence; values below 20% suggest the model is unsure. Small differences across EPs are normal due to floating-point precision variations." />
-                            </StackPanel>
+                        <!-- Intro -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Glossary" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                Text="Definitions for the concepts and benchmark columns used throughout the app. Start with Core Concepts, then jump to the section for whichever scenario tab you're using." />
                         </StackPanel>
+
+                        <!-- Core Concepts -->
+                        <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="8" Padding="20">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Core Concepts" FontSize="18" FontWeight="SemiBold" />
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Execution Provider (EP)" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="The hardware backend ONNX Runtime uses to execute model operations. Examples: CPUExecutionProvider (CPU), DmlExecutionProvider (GPU via DirectML), OpenVINOExecutionProvider (Intel CPU/GPU/NPU), QNNExecutionProvider (Qualcomm NPU). Each EP optimizes inference for its target hardware." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Compilation Mode" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Each model is benchmarked twice per EP: Uncompiled (model loaded as-is) and Compiled (model pre-optimized for that EP via OrtModelCompilationOptions). Compilation adds an upfront cost but typically lowers per-inference latency." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Heat Map" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Color emojis on Compile, Inference, and EP Latency columns rank rows from fastest (🟢) to slowest (🔴) based on the current results. ❌ marks rows where a run errored out — these are always sorted to the bottom." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Sorting" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Click any column header to sort ascending/descending. Default sort is EP Latency, fastest first. The # column always reflects the current sort order." />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Shared Benchmark Columns -->
+                        <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="8" Padding="20">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Shared Benchmark Columns" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.7"
+                                    Text="These columns appear in both Image Classification and Text Similarity tabs." />
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="#" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Row number based on the current sort order. Errors are always pinned to the bottom." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Execution Provider" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="The EP used for this row. See Core Concepts above." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Mode" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Uncompiled or Compiled. See Core Concepts above." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Session Creation" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Time to create or fetch the cached InferenceSession for the EP. First-time creation includes loading the model and initializing the EP runtime; subsequent calls hit the in-memory cache (~0 ms)." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Compile" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Time to compile the ONNX model into an EP-optimized format. Shows '—' for uncompiled rows and 'cached' if the compiled session was already loaded." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Inference" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Time to run the model on one input. The core EP-dependent metric — lower is better." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="EP Latency" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Compile + Inference. The total time the EP itself spends on the model, excluding app-level overhead. The primary metric for ranking EPs and the default sort column." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Total" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="End-to-end wall-clock time including preprocessing, session creation, compile, inference, and post-processing. Reflects the full user-perceived latency." />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Image Classification Specific -->
+                        <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="8" Padding="20">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Image Classification — Specific Columns" FontSize="18" FontWeight="SemiBold" />
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Image Preprocessing" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Time to load, decode, resize to 224×224, convert BGRA→RGB, and apply ImageNet normalization. Always runs on CPU regardless of EP — variations across rows are noise, not EP differences." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Top Prediction" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="The highest-confidence ImageNet class label after softmax (e.g., 'golden retriever'). All EPs should produce the same top prediction for a given image; differences may indicate floating-point precision drift." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Confidence" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Softmax probability of the top prediction, as a percentage. Values near 100% mean the model is confident; below 20% means it's unsure." />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Text Similarity Specific -->
+                        <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="8" Padding="20">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Text Similarity — Specific Columns" FontSize="18" FontWeight="SemiBold" />
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Tokenization" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Time to convert the query string into integer token IDs using a BERT WordPiece tokenizer. Always runs on CPU regardless of EP — analogous to Image Preprocessing." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Top Match" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="The corpus sentence with the highest cosine similarity to the query embedding. All EPs should agree on the top match; differences may indicate floating-point precision drift." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Similarity" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="Cosine similarity between the query and top match, as a percentage. Vectors are L2-normalized so cosine similarity equals their dot product. Higher means closer in meaning; ~100% is a near-paraphrase, near 0% means no good match." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Embedding" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="A fixed-length numeric vector that captures the meaning of a piece of text. The default model produces 384-dimensional embeddings — sentences with similar meaning produce vectors close together in that 384-D space." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Corpus" FontWeight="SemiBold" FontSize="14" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                        Text="The built-in set of sentences your query is compared against. Embeddings for the corpus are pre-computed once at startup, so per-EP timing reflects only the cost of embedding the query." />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
                     </StackPanel>
                 </ScrollViewer>
@@ -380,7 +716,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="About This App" FontSize="20" FontWeight="SemiBold" />
                             <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                                Text="WinML EP Benchmarking Sample App is a sample/demo application built to exercise and benchmark the new Windows ML APIs (Microsoft.Windows.AI.MachineLearning) shipped with Windows App SDK. It ships with a ResNet-50 ONNX model but supports loading any ONNX model for benchmarking." />
+                                Text="WinML EP Benchmarking Sample App is a sample/demo application built to exercise and benchmark the new Windows ML APIs (Microsoft.Windows.AI.MachineLearning) shipped with Windows App SDK. It includes two scenarios: Image Classification with ResNet-50 (a CNN vision model) and Text Similarity with all-MiniLM-L6-v2 (a transformer-based text embedding model). Each tab lets you compare CPU, GPU, and NPU execution providers side-by-side. Any compatible ONNX model can be loaded for benchmarking." />
                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                 <TextBlock Text="Learn more at" FontSize="13" Opacity="0.85" VerticalAlignment="Center" />
                                 <HyperlinkButton Content="aka.ms/winml" NavigateUri="https://aka.ms/winml"
@@ -392,11 +728,13 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="Features" FontSize="18" FontWeight="SemiBold" />
                             <StackPanel Spacing="4" Margin="8,4,0,0">
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Two scenarios — Image Classification (CNN) and Text Similarity / semantic search (transformer)" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Compare All EPs — benchmark every detected execution provider in both compiled and uncompiled modes" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Sortable columns — click any column header to sort ascending/descending" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Emoji heat map — color-coded performance indicators (🟢 fastest → 🔴 slowest) on Compile, Inference, and EP Latency columns" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Auto-download — the embedding model fetches automatically the first time you visit the Text Similarity tab" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Export Results — save benchmark data to CSV for analysis in Excel or other tools" />
-                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Model switching — load any ONNX model via Change Model, or download from the ONNX Model Zoo" />
+                                <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Model switching — load any ONNX model via Change Model, or download from the ONNX Model Zoo / HuggingFace" />
                                 <TextBlock FontSize="12" Opacity="0.8" Text="&#x2022; Runtime diagnostics — view ONNX Runtime, Windows ML, WASDK versions and deployment info" />
                             </StackPanel>
                         </StackPanel>
@@ -430,6 +768,18 @@
                                     <TextBlock Text="ImageNet Labels" FontWeight="SemiBold" FontSize="13" />
                                     <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.8"
                                         Text="The 1,000-class label set is derived from the ImageNet Large Scale Visual Recognition Challenge (ILSVRC). ImageNet is a project by Stanford Vision Lab, Princeton University, and others." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="sentence-transformers/all-MiniLM-L6-v2" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                                        Text="Source: huggingface.co/sentence-transformers/all-MiniLM-L6-v2&#x0a;License: Apache License 2.0&#x0a;Copyright: UKP Lab and the sentence-transformers contributors&#x0a;A 6-layer distilled BERT producing 384-dim sentence embeddings, used in the Text Similarity tab." />
+                                </StackPanel>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Microsoft.ML.Tokenizers" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                                        Text="Copyright (c) .NET Foundation and Contributors&#x0a;License: MIT License&#x0a;Source: github.com/dotnet/machinelearning&#x0a;Provides the BERT WordPiece tokenizer used to convert text into model input IDs." />
                                 </StackPanel>
 
                                 <StackPanel Spacing="2">

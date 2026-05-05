@@ -16,6 +16,15 @@ public sealed partial class MainWindow : Window
     private string _sortColumn = "EpLatency";
     private bool _sortAscending = true;
 
+    // Embedding tab state
+    private TextEmbedder? _embedder;
+    private readonly ObservableCollection<EmbeddingMatch> _embMatches = new();
+    private readonly ObservableCollection<EmbeddingMetrics> _embMetrics = new();
+    private List<EpDeviceInfo> _embDevices = new();
+    private string _embSortColumn = "EpLatency";
+    private bool _embSortAscending = true;
+    private bool _embAutoDownloadAttempted;
+
     // Column header labels (without arrows) for reset
     private static readonly Dictionary<string, string> ColumnLabels = new()
     {
@@ -31,6 +40,20 @@ public sealed partial class MainWindow : Window
         ["Confidence"] = "Confidence"
     };
 
+    private static readonly Dictionary<string, string> EmbColumnLabels = new()
+    {
+        ["EpName"] = "Execution Provider",
+        ["Mode"] = "Mode",
+        ["Tokenize"] = "Tokenization",
+        ["Session"] = "Session Creation",
+        ["Compile"] = "Compile",
+        ["Inference"] = "Inference",
+        ["EpLatency"] = "EP Latency",
+        ["Total"] = "Total",
+        ["TopMatch"] = "Top Match",
+        ["Similarity"] = "Similarity"
+    };
+
     public MainWindow()
     {
         this.InitializeComponent();
@@ -43,6 +66,8 @@ public sealed partial class MainWindow : Window
 
         ResultsListView.ItemsSource = _results;
         MetricsListView.ItemsSource = _metrics;
+        EmbMatchesListView.ItemsSource = _embMatches;
+        EmbMetricsListView.ItemsSource = _embMetrics;
 
         var modelPath = Path.Combine(AppContext.BaseDirectory, "Assets", "resnet50-v2-7.onnx");
         _classifier = new ImageClassifier(modelPath);
@@ -50,6 +75,7 @@ public sealed partial class MainWindow : Window
         UpdateModelNameDisplay(modelPath);
         PopulateModelInfo();
         PopulateRuntimeInfo();
+        InitializeEmbeddingsTabUi();
 
         // WASDK 2.0 Pivot doesn't constrain content height properly — fix ScrollViewer on resize
         this.SizeChanged += (s, e) => ApplyLayoutConstraints(e.Size.Height);
@@ -63,6 +89,7 @@ public sealed partial class MainWindow : Window
 
         StatusText.Text = "Initializing Windows ML...";
         _ = InitializeClassifierAsync();
+        _ = TryInitializeEmbedderAsync();
     }
 
     private void PopulateModelInfo()
@@ -82,6 +109,32 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             ModelFileName.Text = $"Error: {ex.Message}";
+        }
+    }
+
+    private void PopulateEmbModelInfo()
+    {
+        if (_embedder is null) return;
+        try
+        {
+            var info = _embedder.GetModelInfo();
+            EmbModelFileName.Text = info.FileName;
+            EmbModelFileSize.Text = info.FileSize;
+            EmbModelProducer.Text = info.ProducerName;
+            EmbModelVersion.Text = info.ModelVersion.ToString();
+            EmbModelQuantized.Text = info.IsQuantized ? $"Yes ({info.QuantizationDetail})" : info.QuantizationDetail;
+            EmbModelDomain.Text = string.IsNullOrEmpty(info.Domain) ? "—" : info.Domain;
+            EmbModelDescription.Text = string.IsNullOrEmpty(info.Description) ? "—" : info.Description;
+            EmbTensorListView.ItemsSource = info.Tensors;
+
+            EmbModelInfoStatus.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+            EmbModelInfoGrid.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+            EmbModelTensorHeader.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+            EmbTensorListView.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+        }
+        catch (Exception ex)
+        {
+            EmbModelInfoStatus.Text = $"Error: {ex.Message}";
         }
     }
 
@@ -109,6 +162,10 @@ public sealed partial class MainWindow : Window
             if (_devices.Count > 0)
                 EpSelector.SelectedIndex = 0;
             StatusText.Text = $"Ready — {_devices.Count} EP device(s) available.";
+
+            // EPs are global to the OrtEnv — share the list with the Embeddings tab so the dropdown
+            // is populated immediately, even before the embedding model is downloaded.
+            PopulateEmbDevicesFromShared();
         }
         catch (Exception ex)
         {
@@ -510,6 +567,493 @@ public sealed partial class MainWindow : Window
             }
             if (emojiIndex > 4) emojiIndex = 4;
 
+            setText(ranked[i], $"{HeatEmojis[emojiIndex]} {getRaw(ranked[i]):F1} ms");
+        }
+    }
+
+    // ============================================================
+    //                     EMBEDDINGS TAB
+    // ============================================================
+
+    private string EmbModelPath => Path.Combine(AppContext.BaseDirectory, "Assets", TextEmbedder.DefaultModelFileName);
+    private string EmbVocabPath => Path.Combine(AppContext.BaseDirectory, "Assets", TextEmbedder.DefaultVocabFileName);
+    private string EmbCorpusPath => Path.Combine(AppContext.BaseDirectory, "Assets", "embeddings_corpus.txt");
+
+    private void InitializeEmbeddingsTabUi()
+    {
+        // Populate the corpus list view from the file even before the embedder loads.
+        if (File.Exists(EmbCorpusPath))
+        {
+            var corpus = File.ReadAllLines(EmbCorpusPath)
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrEmpty(l))
+                .ToList();
+            EmbCorpusListView.ItemsSource = corpus;
+        }
+    }
+
+    /// <summary>
+    /// Reuse the EP list already discovered by the Classification tab.
+    /// EPs are global to the ORT environment, so we don't need to wait for
+    /// the embedding model to be downloaded before showing them.
+    /// </summary>
+    private void PopulateEmbDevicesFromShared()
+    {
+        if (_devices.Count == 0) return;
+        _embDevices = _devices;
+        EmbEpSelector.ItemsSource = _embDevices;
+        if (EmbEpSelector.SelectedIndex < 0 && _embDevices.Count > 0)
+            EmbEpSelector.SelectedIndex = 0;
+    }
+
+    /// <summary>
+    /// When the user switches to the Text Similarity tab for the first time,
+    /// kick off the model download automatically if it hasn't been done yet.
+    /// </summary>
+    private void OnMainPivotSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not Pivot pivot || pivot.SelectedItem is not PivotItem item) return;
+        if (item.Header?.ToString() != "Text Similarity") return;
+
+        if (_embAutoDownloadAttempted) return;
+        if (File.Exists(EmbModelPath) && File.Exists(EmbVocabPath)) return; // already downloaded
+        _embAutoDownloadAttempted = true;
+
+        // Kick off download in the background (fire-and-forget — UI updates via status text).
+        _ = AutoDownloadEmbeddingModelAsync();
+    }
+
+    private async Task AutoDownloadEmbeddingModelAsync()
+    {
+        EmbDownloadModelButton.IsEnabled = false;
+        EmbStatusText.Text = "Auto-downloading embedding model (~90 MB)...";
+        try
+        {
+            var progress = new Progress<(string stage, double progress)>(report =>
+            {
+                EmbStatusText.Text = $"{report.stage} {(int)(report.progress * 100)}%";
+            });
+            await TextEmbedder.DownloadDefaultArtifactsAsync(EmbModelPath, EmbVocabPath, progress);
+            EmbStatusText.Text = "Download complete. Loading model...";
+            await TryInitializeEmbedderAsync();
+        }
+        catch (Exception ex)
+        {
+            EmbStatusText.Text = $"Auto-download failed: {ex.Message}. Click 'Download Model' to retry.";
+            _embAutoDownloadAttempted = false; // allow retry on next tab switch
+        }
+        finally
+        {
+            EmbDownloadModelButton.IsEnabled = true;
+        }
+    }
+
+    private async Task TryInitializeEmbedderAsync()
+    {
+        if (!File.Exists(EmbModelPath) || !File.Exists(EmbVocabPath))
+        {
+            EmbStatusText.Text = "Click 'Download Model' to fetch all-MiniLM-L6-v2 (~90 MB).";
+            EmbModelNameText.Text = $"{TextEmbedder.DefaultModelFileName} (not downloaded)";
+            return;
+        }
+
+        EmbStatusText.Text = "Loading embedding model...";
+        try
+        {
+            _embedder?.Dispose();
+            _embedder = new TextEmbedder(EmbModelPath, EmbVocabPath, EmbCorpusPath);
+            await _embedder.InitializeAsync();
+            _embDevices = _embedder.GetAvailableDevices();
+            EmbEpSelector.ItemsSource = _embDevices;
+            if (_embDevices.Count > 0) EmbEpSelector.SelectedIndex = 0;
+
+            UpdateEmbModelNameDisplay(EmbModelPath);
+            PopulateEmbModelInfo();
+            EmbSearchButton.IsEnabled = true;
+            EmbRunAllButton.IsEnabled = true;
+            EmbStatusText.Text = $"Ready — {_embDevices.Count} EP device(s) available, {_embedder.Corpus.Count} corpus sentences embedded.";
+        }
+        catch (Exception ex)
+        {
+            EmbStatusText.Text = $"Init error: {ex.Message}";
+        }
+    }
+
+    private void UpdateEmbModelNameDisplay(string modelPath)
+    {
+        var fi = new FileInfo(modelPath);
+        var sizeMb = fi.Length / (1024.0 * 1024.0);
+        var sizeText = sizeMb >= 1024 ? $"{sizeMb / 1024.0:F1} GB" : $"{sizeMb:F1} MB";
+        EmbModelNameText.Text = $"{fi.Name} ({sizeText})";
+    }
+
+    private async void OnEmbDownloadModel(object sender, RoutedEventArgs e)
+    {
+        EmbDownloadModelButton.IsEnabled = false;
+        EmbStatusText.Text = "Starting download...";
+        try
+        {
+            var progress = new Progress<(string stage, double progress)>(report =>
+            {
+                EmbStatusText.Text = $"{report.stage} {(int)(report.progress * 100)}%";
+            });
+            await TextEmbedder.DownloadDefaultArtifactsAsync(EmbModelPath, EmbVocabPath, progress);
+            EmbStatusText.Text = "Download complete. Loading model...";
+            await TryInitializeEmbedderAsync();
+        }
+        catch (Exception ex)
+        {
+            EmbStatusText.Text = $"Download failed: {ex.Message}";
+        }
+        finally
+        {
+            EmbDownloadModelButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnEmbChangeModel(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(".onnx");
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        // Need a vocab too — ask user
+        var vocabPicker = new FileOpenPicker();
+        vocabPicker.FileTypeFilter.Add(".txt");
+        WinRT.Interop.InitializeWithWindow.Initialize(vocabPicker, hwnd);
+        EmbStatusText.Text = "Select the matching vocab.txt for this model...";
+        var vocabFile = await vocabPicker.PickSingleFileAsync();
+        if (vocabFile is null)
+        {
+            EmbStatusText.Text = "Cancelled — vocab.txt is required.";
+            return;
+        }
+
+        _embedder?.Dispose();
+        _embedder = new TextEmbedder(file.Path, vocabFile.Path, EmbCorpusPath);
+        EmbStatusText.Text = $"Loading {file.Name}...";
+        try
+        {
+            await _embedder.InitializeAsync();
+            _embDevices = _embedder.GetAvailableDevices();
+            EmbEpSelector.ItemsSource = _embDevices;
+            if (_embDevices.Count > 0) EmbEpSelector.SelectedIndex = 0;
+            UpdateEmbModelNameDisplay(file.Path);
+            PopulateEmbModelInfo();
+            _embMatches.Clear();
+            _embMetrics.Clear();
+            EmbSearchButton.IsEnabled = true;
+            EmbRunAllButton.IsEnabled = true;
+            EmbStatusText.Text = $"Ready — {_embDevices.Count} EP device(s).";
+        }
+        catch (Exception ex)
+        {
+            EmbStatusText.Text = $"Load error: {ex.Message}";
+        }
+    }
+
+    private async void OnEmbSearch(object sender, RoutedEventArgs e)
+    {
+        if (_embedder is null || EmbEpSelector.SelectedItem is not EpDeviceInfo device) return;
+        var query = QueryTextBox.Text?.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            EmbStatusText.Text = "Type a query first.";
+            return;
+        }
+
+        SetEmbButtonsEnabled(false);
+        EmbStatusText.Text = $"Searching with {device.DisplayName}...";
+
+        try
+        {
+            // Uncompiled
+            var result = await _embedder.SearchAsync(query, device, compiled: false);
+            _embMatches.Clear();
+            foreach (var m in result.Matches) _embMatches.Add(m);
+
+            var existing = _embMetrics.FirstOrDefault(m => m.EpName == device.DisplayName && m.Mode == "Uncompiled");
+            if (existing != null) _embMetrics.Remove(existing);
+            _embMetrics.Add(result.Metrics);
+
+            // Compiled
+            EmbStatusText.Text = $"Compiling & searching with {device.DisplayName}...";
+            try
+            {
+                var compiled = await _embedder.SearchAsync(query, device, compiled: true);
+                var existingC = _embMetrics.FirstOrDefault(m => m.EpName == device.DisplayName && m.Mode == "Compiled");
+                if (existingC != null) _embMetrics.Remove(existingC);
+                _embMetrics.Add(compiled.Metrics);
+            }
+            catch (Exception cex)
+            {
+                _embMetrics.Add(new EmbeddingMetrics
+                {
+                    EpName = device.DisplayName,
+                    Mode = "Compiled",
+                    CompileTime = "Error",
+                    InferenceTime = "—",
+                    TotalTime = ExtractErrorCode(cex)
+                });
+            }
+
+            ApplyEmbHeatMap();
+            EmbStatusText.Text = $"Done — {device.DisplayName}: {result.Metrics.InferenceTime} inference";
+        }
+        catch (Exception ex)
+        {
+            EmbStatusText.Text = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            SetEmbButtonsEnabled(true);
+        }
+    }
+
+    private async void OnEmbRunAll(object sender, RoutedEventArgs e)
+    {
+        if (_embedder is null) return;
+        var query = QueryTextBox.Text?.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            EmbStatusText.Text = "Type a query first.";
+            return;
+        }
+
+        SetEmbButtonsEnabled(false);
+        _embMetrics.Clear();
+        int total = _embDevices.Count * 2;
+        int step = 0;
+
+        for (int i = 0; i < _embDevices.Count; i++)
+        {
+            var device = _embDevices[i];
+
+            step++;
+            EmbStatusText.Text = $"[{step}/{total}] {device.DisplayName} (uncompiled)...";
+            try
+            {
+                var result = await _embedder.SearchAsync(query, device, compiled: false);
+                _embMetrics.Add(result.Metrics);
+                ApplyEmbHeatMap();
+
+                _embMatches.Clear();
+                foreach (var m in result.Matches) _embMatches.Add(m);
+            }
+            catch (Exception ex)
+            {
+                _embMetrics.Add(new EmbeddingMetrics
+                {
+                    EpName = device.DisplayName,
+                    Mode = "Uncompiled",
+                    InferenceTime = "Error",
+                    TotalTime = ExtractErrorCode(ex)
+                });
+                ApplyEmbHeatMap();
+            }
+
+            step++;
+            EmbStatusText.Text = $"[{step}/{total}] {device.DisplayName} (compiled)...";
+            try
+            {
+                var compiled = await _embedder.SearchAsync(query, device, compiled: true);
+                _embMetrics.Add(compiled.Metrics);
+                ApplyEmbHeatMap();
+            }
+            catch (Exception ex)
+            {
+                _embMetrics.Add(new EmbeddingMetrics
+                {
+                    EpName = device.DisplayName,
+                    Mode = "Compiled",
+                    CompileTime = "Error",
+                    InferenceTime = "—",
+                    TotalTime = ExtractErrorCode(ex)
+                });
+                ApplyEmbHeatMap();
+            }
+        }
+
+        EmbStatusText.Text = $"Comparison complete — {_embDevices.Count} EP(s) x 2 modes benchmarked.";
+        SetEmbButtonsEnabled(true);
+    }
+
+    private void SetEmbButtonsEnabled(bool enabled)
+    {
+        EmbSearchButton.IsEnabled = enabled && _embedder != null;
+        EmbRunAllButton.IsEnabled = enabled && _embedder != null;
+        EmbExportButton.IsEnabled = _embMetrics.Count > 0;
+    }
+
+    private async void OnEmbDownloadCorpus(object sender, RoutedEventArgs e)
+    {
+        if (!File.Exists(EmbCorpusPath))
+        {
+            EmbStatusText.Text = "Corpus file not found.";
+            return;
+        }
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        picker.FileTypeChoices.Add("Text", new List<string> { ".txt" });
+        picker.SuggestedFileName = "coffee_shop_knowledge_bank";
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+
+        try
+        {
+            var contents = await File.ReadAllTextAsync(EmbCorpusPath);
+            await Windows.Storage.FileIO.WriteTextAsync(file, contents);
+            EmbStatusText.Text = $"Corpus saved to {file.Name}";
+        }
+        catch (Exception ex)
+        {
+            EmbStatusText.Text = $"Save failed: {ex.Message}";
+        }
+    }
+
+    private async void OnEmbExportCsv(object sender, RoutedEventArgs e)
+    {
+        if (_embMetrics.Count == 0) return;
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        picker.FileTypeChoices.Add("CSV", new List<string> { ".csv" });
+        picker.SuggestedFileName = $"EP_Embeddings_Benchmark_{DateTime.Now:yyyyMMdd_HHmmss}";
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        var file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+
+        var lines = new List<string>
+        {
+            "Rank,Execution Provider,Mode,Tokenization (ms),Session Creation (ms),Compile (ms),Inference (ms),EP Latency (ms),Total (ms),Top Match,Similarity"
+        };
+        foreach (var m in _embMetrics)
+        {
+            var tok = m.RawTokenizeMs >= 0 ? $"{m.RawTokenizeMs:F1}" : "";
+            var sess = m.RawSessionMs >= 0 ? $"{m.RawSessionMs:F1}" : "";
+            var comp = m.RawCompileMs >= 0 ? $"{m.RawCompileMs:F1}" : m.CompileTime.Replace("—", "").Trim();
+            var inf = m.RawInferenceMs >= 0 ? $"{m.RawInferenceMs:F1}" : "Error";
+            var ep = m.RawEpPerfMs >= 0 ? $"{m.RawEpPerfMs:F1}" : "Error";
+            var tot = m.RawTotalMs >= 0 ? $"{m.RawTotalMs:F1}" : "Error";
+            lines.Add($"{m.Rank},\"{m.EpName}\",{m.Mode},{tok},{sess},{comp},{inf},{ep},{tot},\"{m.TopMatch}\",{m.TopSimilarity}");
+        }
+        await Windows.Storage.FileIO.WriteLinesAsync(file, lines);
+        EmbStatusText.Text = $"Exported {_embMetrics.Count} rows to {file.Name}";
+    }
+
+    private void OnEmbColumnHeaderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string col) return;
+        if (_embMetrics.Count == 0) return;
+
+        if (_embSortColumn == col)
+            _embSortAscending = !_embSortAscending;
+        else
+        {
+            _embSortColumn = col;
+            _embSortAscending = true;
+        }
+
+        UpdateEmbColumnHeaderArrows();
+        ApplyEmbHeatMap();
+    }
+
+    private void UpdateEmbColumnHeaderArrows()
+    {
+        var arrow = _embSortAscending ? " ▲" : " ▼";
+        var headers = new Dictionary<string, TextBlock>
+        {
+            ["EpName"] = EmbHeader_EpName,
+            ["Mode"] = EmbHeader_Mode,
+            ["Tokenize"] = EmbHeader_Tokenize,
+            ["Session"] = EmbHeader_Session,
+            ["Compile"] = EmbHeader_Compile,
+            ["Inference"] = EmbHeader_Inference,
+            ["EpLatency"] = EmbHeader_EpLatency,
+            ["Total"] = EmbHeader_Total,
+            ["TopMatch"] = EmbHeader_TopMatch,
+            ["Similarity"] = EmbHeader_Similarity
+        };
+        foreach (var (key, tb) in headers)
+            tb.Text = key == _embSortColumn ? EmbColumnLabels[key] + arrow : EmbColumnLabels[key];
+    }
+
+    private void ApplyEmbHeatMap()
+    {
+        ApplyEmbHeatMapToColumn(m => m.RawCompileMs, (m, t) => m.CompileTime = t, m => m.RawCompileMs >= 0);
+        ApplyEmbHeatMapToColumn(m => m.RawInferenceMs, (m, t) => m.InferenceTime = t, m => m.RawInferenceMs >= 0);
+        ApplyEmbHeatMapToColumn(m => m.RawEpPerfMs, (m, t) => m.EpPerfTime = t, m => m.RawEpPerfMs >= 0);
+
+        Func<EmbeddingMetrics, object> sortKey = _embSortColumn switch
+        {
+            "EpName" => m => m.EpName,
+            "Mode" => m => m.Mode,
+            "Tokenize" => m => m.RawTokenizeMs < 0 ? (object)double.MaxValue : m.RawTokenizeMs,
+            "Session" => m => m.RawSessionMs < 0 ? (object)double.MaxValue : m.RawSessionMs,
+            "Compile" => m => m.RawCompileMs < 0 ? (object)double.MaxValue : m.RawCompileMs,
+            "Inference" => m => m.RawInferenceMs < 0 ? (object)double.MaxValue : m.RawInferenceMs,
+            "EpLatency" => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs,
+            "Total" => m => m.RawTotalMs < 0 ? (object)double.MaxValue : m.RawTotalMs,
+            "TopMatch" => m => m.TopMatch,
+            "Similarity" => m => m.TopSimilarity,
+            _ => m => m.RawEpPerfMs < 0 ? (object)double.MaxValue : m.RawEpPerfMs
+        };
+
+        int rank = 0;
+        var sorted = _embSortAscending ? _embMetrics.OrderBy(sortKey) : _embMetrics.OrderByDescending(sortKey);
+        var src = sorted.Select(m => new EmbeddingMetrics
+        {
+            Rank = ++rank,
+            EpName = m.EpName,
+            Mode = m.Mode,
+            RawTokenizeMs = m.RawTokenizeMs,
+            TokenizeTime = m.TokenizeTime,
+            RawSessionMs = m.RawSessionMs,
+            SessionTime = m.SessionTime,
+            RawCompileMs = m.RawCompileMs,
+            CompileTime = m.CompileTime,
+            RawInferenceMs = m.RawInferenceMs,
+            InferenceTime = m.InferenceTime,
+            RawEpPerfMs = m.RawEpPerfMs,
+            EpPerfTime = m.EpPerfTime,
+            RawTotalMs = m.RawTotalMs,
+            TotalTime = m.TotalTime,
+            TopMatch = m.TopMatch,
+            TopSimilarity = m.TopSimilarity
+        }).ToList();
+        _embMetrics.Clear();
+        foreach (var item in src) _embMetrics.Add(item);
+    }
+
+    private void ApplyEmbHeatMapToColumn(
+        Func<EmbeddingMetrics, double> getRaw,
+        Action<EmbeddingMetrics, string> setText,
+        Func<EmbeddingMetrics, bool> isValid)
+    {
+        var measured = _embMetrics.Where(isValid).ToList();
+        if (measured.Count == 0) return;
+        var ranked = measured.OrderBy(m => getRaw(m)).ToList();
+        int n = ranked.Count;
+        for (int i = 0; i < n; i++)
+        {
+            int emojiIndex;
+            if (n == 1) emojiIndex = 0;
+            else if (n <= 5) emojiIndex = (int)Math.Round(i * 4.0 / (n - 1));
+            else
+            {
+                if (i == 0) emojiIndex = 0;
+                else if (i == n - 1) emojiIndex = 4;
+                else emojiIndex = 1 + (int)Math.Round((i - 1) * 2.0 / (n - 3));
+            }
+            if (emojiIndex > 4) emojiIndex = 4;
             setText(ranked[i], $"{HeatEmojis[emojiIndex]} {getRaw(ranked[i]):F1} ms");
         }
     }
